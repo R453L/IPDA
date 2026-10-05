@@ -6,6 +6,9 @@ on:
 jobs:
   card:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
