@@ -6,8 +6,6 @@ on:
 jobs:
   card:
     runs-on: ubuntu-latest
-    env:
-      POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -18,8 +16,5 @@ jobs:
       - run: python card_test.py
       - uses: actions/upload-artifact@v4
         with:
-          name: card
-          path: |
-            card.png
-            bg.jpg
-
+          name: cards
+          path: card_*.png
