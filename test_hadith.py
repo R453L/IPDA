@@ -1,4 +1,5 @@
 import json
+import os
 import random
 import urllib.request
 import urllib.error
@@ -39,7 +40,11 @@ payload = {
 req = urllib.request.Request(
     API_URL,
     data=json.dumps(payload).encode("utf-8"),
-    headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"},
+    headers={
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0",
+        "Authorization": "Bearer " + os.environ["POLLINATIONS_API_KEY"],
+    },
 )
 
 print("Reference: Forty Hadith of Nawawi, Hadith", h["idInBook"])
