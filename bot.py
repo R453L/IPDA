@@ -9,6 +9,8 @@ import requests
 
 import cards
 
+sys.stdout.reconfigure(line_buffering=True)
+
 POLL_KEY = os.environ["POLLINATIONS_API_KEY"]
 TG_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TG_CHAT = os.environ["TELEGRAM_CHAT_ID"]
@@ -21,6 +23,13 @@ BOOKS = {
     "bukhari": {"path": "the_9_books/bukhari.json", "name": "সহীহ বুখারী", "weight": 3},
     "muslim": {"path": "the_9_books/muslim.json", "name": "সহীহ মুসলিম", "weight": 3},
 }
+# Only books/chapters about character, faith, remembrance and the heart.
+# None means every hadith of that book is allowed.
+ALLOWED_CHAPTERS = {
+    "nawawi40": None,
+    "bukhari": {2, 3, 53, 66, 69, 75, 78, 79, 80, 81},
+    "muslim": {1, 38, 39, 45, 47, 48, 49, 50, 55},
+}
 CHAT_URL = "https://gen.pollinations.ai/v1/chat/completions"
 STATE_FILE = "posted.json"
 CARD_MAX_CHARS = 260
@@ -31,6 +40,9 @@ BLOCK_WORDS = [
     "fornicat", "castrat", "urine", "urinat", "excrement", "feces", "slave girl",
     "concubine", "captive", "sodomy", "homosexual", "nakedness", "naked", "genital",
     "sexual", "lust", "wet dream", "ghusl", "janabah", "impurity",
+    "change it with his hand", "fight", "kill", "slay", "jihad", "retaliat",
+    "hellfire", "punish", "flog", "stone", "cut off", "apostate", "dajjal",
+    "antichrist", "last hour", "day of judgment", "grave", "torment",
 ]
 
 SYS_ANALYZE = (
@@ -68,11 +80,27 @@ SYS_ANALYZE = (
 )
 SYS_VERIFY = (
     "You are a strict reviewer of Bengali translations of hadith. Compare the "
-    "Bengali with the Arabic and English quoted words, and check that the Bengali "
-    "narrator name matches the English narrator. Reply with exactly one line: "
-    "'OK' if the Bengali is faithful, complete, adds nothing, changes no meaning "
-    "and the narrator is right, and the Arabic and English quoted words are the "
-    "same statement; otherwise 'BAD: <short reason in English>'."
+    "Bengali with the English quoted words and, when the Arabic quoted words are "
+    "provided, also with the Arabic. If the Arabic is not provided, judge against "
+    "the English only and do NOT fail the translation for that reason. Also check "
+    "that the Bengali narrator refers to the same person as the English narrator "
+    "(different spellings or a shorter form of the name are fine). Reply with "
+    "exactly one line: 'OK' if the Bengali is faithful, complete, adds nothing, "
+    "changes no meaning, turns no supplication into a narration and no command "
+    "into a description, and the narrator is right; otherwise "
+    "'BAD: <short reason in English>'."
+)
+SYS_BACK = (
+    "Translate the given Bengali text into plain, literal English. Output only "
+    "the English translation, with no notes."
+)
+SYS_COMPARE = (
+    "You compare two English texts. Text A is the original and text B is a "
+    "back-translation. Reply with exactly one line: 'SAME' if both convey the "
+    "same meaning (ignore wording and small style differences), or "
+    "'DIFFERENT: <short reason>' if B adds, drops or changes any meaning, "
+    "changes who does or says what, or turns a request or prayer into a "
+    "statement or the reverse."
 )
 
 
@@ -114,7 +142,11 @@ def ask_ai(system, user):
             r = requests.post(CHAT_URL, json=payload, headers=headers, timeout=120)
             if r.ok:
                 return r.json()["choices"][0]["message"]["content"].strip()
-            print("AI error", r.status_code, r.text[:200])
+            print("AI error", r.status_code, r.text[:160])
+            if r.status_code in (400, 401, 402, 403, 404, 422):
+                raise RuntimeError("AI rejected request: %d" % r.status_code)
+        except RuntimeError:
+            raise
         except Exception as e:
             print("AI exception", type(e).__name__)
         time.sleep(5)
@@ -201,6 +233,9 @@ def pick_hadith(posted):
         if not items:
             continue
         h = random.choice(items)
+        allowed = ALLOWED_CHAPTERS.get(key)
+        if allowed is not None and h.get("chapterId") not in allowed:
+            continue
         uid = key + ":" + str(h.get("idInBook"))
         if uid in posted:
             continue
@@ -246,7 +281,16 @@ def verify(c, a):
         "English quoted words:\n" + c["english_quote"] + "\n\n"
         "Bengali:\n" + a["bengali"]
     )
-    return clean(ask_ai(SYS_VERIFY, user))
+    verdict = clean(ask_ai(SYS_VERIFY, user))
+    if not verdict.startswith("OK"):
+        return verdict
+    back = clean(ask_ai(SYS_BACK, a["bengali"]))
+    same = clean(ask_ai(SYS_COMPARE, "Text A (original):\n" + c["english_quote"]
+                        + "\n\nText B (back-translation):\n" + back))
+    print("  back-translation:", back[:160])
+    if not same.startswith("SAME"):
+        return "BAD: back-translation differs: " + same[:200]
+    return "OK"
 
 
 def tg(method, data, files=None):
