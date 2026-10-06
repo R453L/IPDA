@@ -1,8 +1,3 @@
-import base64
-import colorsys
-import glob
-import html as htmllib
-import io
 import json
 import os
 import random
@@ -11,8 +6,8 @@ import sys
 import time
 
 import requests
-from PIL import Image
-from playwright.sync_api import sync_playwright
+
+import cards
 
 POLL_KEY = os.environ["POLLINATIONS_API_KEY"]
 TG_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
@@ -28,84 +23,57 @@ BOOKS = {
 }
 CHAT_URL = "https://gen.pollinations.ai/v1/chat/completions"
 STATE_FILE = "posted.json"
-CARD_MAX_CHARS = 380
-LABELS = ["আজকের হাদিস", "রাসূলুল্লাহ ﷺ বলেছেন", "হাদিসের বাণী"]
+CARD_MAX_CHARS = 260
+MAX_ATTEMPTS = 14
 
-SYS_TRANSLATE = (
-    "You are a careful Islamic translator. Translate the given hadith into "
-    "natural, simple Bengali. Rules: translate faithfully, never add, remove "
-    "or explain anything. Write the Prophet as 'রাসূলুল্লাহ ﷺ'. Write (রাঃ) "
-    "after the names of companions. Do not use dash symbols; use commas or "
-    "full stops instead. Output ONLY the Bengali translation, with no notes "
-    "or extra text."
+BLOCK_WORDS = [
+    "menstru", "intercourse", "semen", "penis", "vagina", "private part", "adulter",
+    "fornicat", "castrat", "urine", "urinat", "excrement", "feces", "slave girl",
+    "concubine", "captive", "sodomy", "homosexual", "nakedness", "naked", "genital",
+    "sexual", "lust", "wet dream", "ghusl", "janabah", "impurity",
+]
+
+SYS_ANALYZE = (
+    "You help prepare Bengali social media cards from hadith. You receive the "
+    "full English text of a hadith, the quoted words (English, and Arabic when "
+    "available) and the narrator. Reply with ONE JSON object and nothing else, "
+    "with exactly these keys:\n"
+    '"speaker_is_prophet": true only if the quoted words were spoken by Prophet '
+    "Muhammad (peace be upon him) himself, including him reporting the words of "
+    "Allah. false if the words belong to a Companion, a follower or anyone else.\n"
+    '"suitable": true only if the quoted words are clear and meaningful on their '
+    "own for a general Muslim audience, and are about character, faith, "
+    "remembrance, mercy, patience, gratitude, family, charity, knowledge, good "
+    "deeds, simple worship reminders or supplications. false if they need a "
+    "specific event or context to be understood, are legal or ritual technicalities "
+    "(purity, inheritance, trade, detailed prayer rules), involve graphic "
+    "punishment, sexual or bodily topics, specific tribes, people or political "
+    "matters, sectarian or controversial matters, signs of the end times or unseen "
+    "details, or anything that could mislead when shortened. Also false if the "
+    "Arabic and English quoted words are clearly not the same statement. "
+    "When in doubt, false.\n"
+    '"reason": a short English reason.\n'
+    '"bengali": a faithful, natural, simple Bengali translation of ONLY the quoted '
+    "words. Never add, remove or explain anything. Do not include the narrator "
+    "chain and do not start with 'রাসূলুল্লাহ ﷺ বলেছেন'. Write the Prophet as "
+    "'রাসূলুল্লাহ ﷺ', Allah as 'আল্লাহ', and put (রাঃ) after companions' names. "
+    "Do not use dash symbols; use commas or full stops instead.\n"
+    '"narrator_bn": the Bengali name of the Companion narrator with (রাঃ), for '
+    "example 'আবূ হুরাইরাহ (রাঃ)', or an empty string if unclear.\n"
+    '"highlights": a list of 1 to 3 key words or short phrases (at most 3 words '
+    "each) copied EXACTLY as they appear inside your Bengali translation.\n"
+    '"hook": one complete sentence copied EXACTLY from your Bengali translation, '
+    "at most 14 words, that works as a headline, or an empty string if there is "
+    "no such sentence."
 )
 SYS_VERIFY = (
     "You are a strict reviewer of Bengali translations of hadith. Compare the "
-    "Bengali with the Arabic and English. Reply with exactly one line: 'OK' if "
-    "the Bengali is faithful, complete, adds nothing, changes no meaning and "
-    "reads naturally; otherwise 'BAD: <short reason in English>'."
+    "Bengali with the Arabic and English quoted words, and check that the Bengali "
+    "narrator name matches the English narrator. Reply with exactly one line: "
+    "'OK' if the Bengali is faithful, complete, adds nothing, changes no meaning "
+    "and the narrator is right, and the Arabic and English quoted words are the "
+    "same statement; otherwise 'BAD: <short reason in English>'."
 )
-SYS_HOOK = (
-    "Write ONE short Bengali headline (maximum 9 words) for a social media "
-    "card based on the given hadith. It must only reflect what the hadith "
-    "actually says. Do not quote the Prophet, do not add any claim, no "
-    "question marks, no emojis, no dash symbols. Output only the headline."
-)
-
-CARD_HTML = """
-<html><head><meta charset="utf-8">
-<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@500;700&family=Amiri&display=swap" rel="stylesheet">
-<style>
-body { margin: 0; }
-.card { width: 1080px; height: 1080px; position: relative; overflow: hidden;
-        display: flex; align-items: center; justify-content: center;
-        font-family: 'Hind Siliguri', 'Amiri', sans-serif; }
-.bg { position: absolute; inset: 0; background-size: cover; background-position: center;
-      background-image: url(data:image/jpeg;base64,__B64__); transform: __TRANSFORM__; }
-.panel { position: relative; isolation: isolate; width: __W__px; box-sizing: border-box;
-         padding: __PT__px 56px 40px; display: flex; flex-direction: column;
-         align-items: center; text-align: center; background: __PANELBG__;
-         border: 2px solid __BORDER__; border-radius: 30px;
-         backdrop-filter: blur(__BLUR__); box-shadow: 0 16px 50px rgba(0,0,0,0.16); }
-.s-soft { background: transparent; border: none; box-shadow: none; backdrop-filter: none; }
-.s-soft::before { content: ""; position: absolute; inset: -60px; z-index: -1;
-                  border-radius: 140px; background: __SOFT__; filter: blur(30px); }
-.s-frame { border-radius: 12px; border: 2px solid __ACCENT__; box-shadow: none; }
-.s-frame::after { content: ""; position: absolute; inset: 10px; border-radius: 6px;
-                  border: 1px solid __ACCENT__88; pointer-events: none; }
-.s-arch { border-radius: 260px 260px 26px 26px; }
-.s-glass { border-radius: 48px; }
-.label { font-size: 40px; font-weight: 700; color: __ACCENT__; }
-.orn { display: flex; align-items: center; gap: 14px; margin: 16px 0 24px; }
-.orn i { display: block; width: 90px; height: 2px; background: __ACCENT__; }
-.orn b { display: block; width: 12px; height: 12px; background: __ACCENT__; transform: rotate(45deg); }
-.text { color: __TEXTCOL__; font-weight: 500; line-height: 1.6; width: 100%; }
-.nb { white-space: nowrap; }
-.sal { font-family: 'Amiri', 'Hind Siliguri', serif; font-size: 1.1em; }
-.ref { font-size: 26px; font-weight: 500; color: __ACCENT__; margin-top: 22px; }
-</style></head>
-<body><div class="card"><div class="bg"></div>
-<div class="panel s-__STYLE__">
-<div class="label">__LABEL__</div>
-<div class="orn"><i></i><b></b><i></i></div>
-<div class="text">__TEXT__</div>
-<div class="ref">__REF__</div>
-</div></div></body></html>
-"""
-
-FIT_JS = """
-(n) => {
-  const t = document.querySelector('.text');
-  const p = document.querySelector('.panel');
-  let s = n < 80 ? 72 : (n < 160 ? 60 : (n < 260 ? 50 : 42));
-  t.style.fontSize = s + 'px';
-  while (p.offsetHeight > 900 && s > 28) {
-    s -= 2;
-    t.style.fontSize = s + 'px';
-  }
-  return [s, p.offsetHeight];
-}
-"""
 
 
 def clean(s):
@@ -114,6 +82,19 @@ def clean(s):
 
 def bn_digits(n):
     return str(n).translate(str.maketrans("0123456789", "০১২৩৪৫৬৭৮৯"))
+
+
+def strip_marks(s):
+    return re.sub("[\u200e\u200f\u202a-\u202e\u2066-\u2069]", "", s)
+
+
+def quotes(s):
+    s = strip_marks(s)
+    found = []
+    found += re.findall("\u201c([^\u201d]+)\u201d", s)
+    found += re.findall("\u00ab([^\u00bb]+)\u00bb", s)
+    found += re.findall('"([^"]+)"', s)
+    return [clean(q) for q in found if clean(q)]
 
 
 def ask_ai(system, user):
@@ -128,7 +109,7 @@ def ask_ai(system, user):
         "Authorization": "Bearer " + POLL_KEY,
         "User-Agent": "Mozilla/5.0",
     }
-    for i in range(3):
+    for _ in range(3):
         try:
             r = requests.post(CHAT_URL, json=payload, headers=headers, timeout=120)
             if r.ok:
@@ -140,16 +121,33 @@ def ask_ai(system, user):
     raise RuntimeError("AI request failed")
 
 
+def parse_json(text):
+    m = re.search(r"\{.*\}", text, re.S)
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(0))
+    except Exception:
+        return None
+
+
 def load_state():
+    state = {"posted": [], "styles": [], "bases": []}
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE, encoding="utf-8") as f:
-            return json.load(f)
-    return []
+            data = json.load(f)
+        if isinstance(data, list):
+            state["posted"] = data
+        elif isinstance(data, dict):
+            state.update(data)
+    return state
 
 
-def save_state(posted):
+def save_state(state):
+    state["styles"] = state["styles"][-8:]
+    state["bases"] = state["bases"][-20:]
     with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(posted, f, ensure_ascii=False, indent=1)
+        json.dump(state, f, ensure_ascii=False, indent=1)
 
 
 CACHE = {}
@@ -169,10 +167,35 @@ def load_book(key):
     return items
 
 
+def candidate(h):
+    """Return a dict with the quoted words, or None if the hadith is not usable."""
+    english = clean(h.get("english", {}).get("text", ""))
+    arabic_full = clean(strip_marks(h.get("arabic", "")))
+    if not english or not arabic_full:
+        return None
+    low = english.lower()
+    if any(w in low for w in BLOCK_WORDS):
+        return None
+    en_q = quotes(english)
+    if len(en_q) != 1 or not (25 <= len(en_q[0]) <= 900):
+        return None
+    ar_q = quotes(arabic_full)
+    arabic_quote = ar_q[0] if len(ar_q) == 1 and len(ar_q[0]) <= 150 else ""
+    if arabic_quote and not (0.45 <= len(arabic_quote) / len(en_q[0]) <= 1.6):
+        arabic_quote = ""
+    return {
+        "english": english,
+        "english_quote": en_q[0],
+        "arabic_full": arabic_full,
+        "arabic_quote": arabic_quote,
+        "narrator": clean(h.get("english", {}).get("narrator", "")),
+    }
+
+
 def pick_hadith(posted):
     keys = list(BOOKS.keys())
     weights = [BOOKS[k]["weight"] for k in keys]
-    for _ in range(60):
+    for _ in range(400):
         key = random.choices(keys, weights=weights)[0]
         items = load_book(key)
         if not items:
@@ -181,119 +204,49 @@ def pick_hadith(posted):
         uid = key + ":" + str(h.get("idInBook"))
         if uid in posted:
             continue
-        eng = clean(h.get("english", {}).get("text", ""))
-        if not (40 <= len(eng) <= 1400) or not h.get("arabic"):
-            continue
-        return key, h, uid
+        c = candidate(h)
+        if c:
+            return key, h, uid, c
     return None
 
 
-def lum(p):
-    r, g, b = [v / 255 for v in p]
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b
-
-
-def hx(r, g, b):
-    return "#%02x%02x%02x" % (int(r * 255), int(g * 255), int(b * 255))
-
-
-def list_bases():
-    files = []
-    if os.path.isdir("bases"):
-        for ext in ("jpg", "jpeg", "png", "webp"):
-            files += glob.glob("bases/*." + ext)
-            files += glob.glob("bases/*." + ext.upper())
-    return sorted(set(files))
-
-
-def load_base(path):
-    im = Image.open(path).convert("RGB")
-    w, h = im.size
-    s = min(w, h)
-    left, top = (w - s) // 2, (h - s) // 2
-    return im.crop((left, top, left + s, top + s)).resize((1080, 1080), Image.LANCZOS)
-
-
-def analyze(im):
-    small = im.resize((60, 60))
-    px = small.load()
-    total, n = 0.0, 0
-    edge = []
-    for y in range(60):
-        for x in range(60):
-            p = px[x, y]
-            total += lum(p)
-            n += 1
-            if x < 9 or x >= 51 or y < 9 or y >= 51:
-                edge.append(p)
-    avg_lum = total / n
-    er = sum(p[0] for p in edge) / len(edge) / 255
-    eg = sum(p[1] for p in edge) / len(edge) / 255
-    eb = sum(p[2] for p in edge) / len(edge) / 255
-    h, l, s = colorsys.rgb_to_hls(er, eg, eb)
-    if s < 0.08:
-        h = 0.11
-    s = min(max(s, 0.35), 0.75)
-    dark = avg_lum < 0.42
-    accent = colorsys.hls_to_rgb(h, 0.78 if dark else 0.30, s)
-    textcol = (1, 1, 1) if dark else colorsys.hls_to_rgb(h, 0.14, 0.35)
-    return dark, hx(*accent), hx(*textcol)
-
-
-def jpeg_b64(im):
-    buf = io.BytesIO()
-    im.save(buf, "JPEG", quality=88)
-    return base64.b64encode(buf.getvalue()).decode("ascii")
-
-
-def prep(s):
-    s = htmllib.escape(s)
-    s = re.sub(r"(\S+-\S+)", r'<span class="nb">\1</span>', s)
-    return s.replace("ﷺ", '<span class="sal">ﷺ</span>')
-
-
-def render_card(text, ref, path="card.png"):
-    files = list_bases()
-    if files:
-        chosen = random.choice(files)
-        im = load_base(chosen)
-        print("Base image:", os.path.basename(chosen))
-    else:
-        print("No base images found, using plain background")
-        im = Image.new("RGB", (1080, 1080), (236, 226, 210))
-    dark, accent, textcol = analyze(im)
-    style = random.choice(["soft", "frame", "arch", "glass", "soft", "frame"])
-    n = len(text)
-    width = 900 if n > 260 else random.choice([740, 800])
-    pt = 110 if style == "arch" else 52
-    panelbg = "rgba(10,18,30,0.66)" if dark else "rgba(255,255,255,0.86)"
-    soft = "rgba(10,18,30,0.74)" if dark else "rgba(255,255,255,0.88)"
-    transform = "scaleX(%d) scale(%s)" % (random.choice([1, -1]), random.choice([1.0, 1.05, 1.1]))
-    page_html = (
-        CARD_HTML.replace("__B64__", jpeg_b64(im))
-        .replace("__TRANSFORM__", transform)
-        .replace("__W__", str(width))
-        .replace("__PT__", str(pt))
-        .replace("__PANELBG__", panelbg)
-        .replace("__SOFT__", soft)
-        .replace("__BORDER__", accent + "66")
-        .replace("__BLUR__", "8px" if dark else "0px")
-        .replace("__STYLE__", style)
-        .replace("__ACCENT__", accent)
-        .replace("__TEXTCOL__", textcol)
-        .replace("__LABEL__", prep(random.choice(LABELS)))
-        .replace("__TEXT__", prep(text))
-        .replace("__REF__", htmllib.escape(ref))
+def analyze(c):
+    user = (
+        "Narrator: " + c["narrator"] + "\n\n"
+        "Full English hadith:\n" + c["english"][:1500] + "\n\n"
+        "Quoted words (English):\n" + c["english_quote"] + "\n\n"
+        "Quoted words (Arabic):\n" + (c["arabic_quote"] or "not available")
     )
-    with sync_playwright() as p:
-        browser = p.chromium.launch()
-        page = browser.new_page(viewport={"width": 1080, "height": 1080})
-        page.set_content(page_html, wait_until="networkidle")
-        page.evaluate("document.fonts.ready.then(() => true)")
-        size, height = page.evaluate(FIT_JS, n)
-        page.screenshot(path=path)
-        browser.close()
-    print("Card style:", style, "| chars:", n, "| font:", size, "| panel height:", height)
+    data = parse_json(ask_ai(SYS_ANALYZE, user))
+    if not isinstance(data, dict):
+        return None
+    bengali = clean(str(data.get("bengali", "")))
+    bengali = clean(bengali.replace("\u2014", ", ").replace("\u2013", ", ").replace(" - ", ", "))
+    highlights = [clean(str(x)) for x in (data.get("highlights") or []) if isinstance(x, (str,))]
+    highlights = [x for x in highlights if x and x in bengali][:3]
+    hook = clean(str(data.get("hook", "")))
+    if hook and (hook not in bengali or len(hook.split()) > 14):
+        hook = ""
+    return {
+        "prophet": data.get("speaker_is_prophet") is True,
+        "suitable": data.get("suitable") is True,
+        "reason": clean(str(data.get("reason", ""))),
+        "bengali": bengali,
+        "narrator_bn": clean(str(data.get("narrator_bn", "")))[:40],
+        "highlights": highlights,
+        "hook": hook,
+    }
+
+
+def verify(c, a):
+    user = (
+        "Narrator (English): " + c["narrator"] + "\n"
+        "Narrator (Bengali): " + a["narrator_bn"] + "\n\n"
+        "Arabic quoted words:\n" + (c["arabic_quote"] or "not available") + "\n\n"
+        "English quoted words:\n" + c["english_quote"] + "\n\n"
+        "Bengali:\n" + a["bengali"]
+    )
+    return clean(ask_ai(SYS_VERIFY, user))
 
 
 def tg(method, data, files=None):
@@ -320,31 +273,34 @@ def tg_photo(path, caption):
         )
 
 
-def make_one(posted):
-    for attempt in range(1, 9):
+def choose_look(state):
+    styles = [s for s in cards.STYLES if s not in state["styles"]] or list(cards.STYLES)
+    files = cards.list_bases()
+    recent = set(state["bases"])
+    fresh = [f for f in files if os.path.basename(f) not in recent] or files
+    return random.choice(styles), (random.choice(fresh) if fresh else None)
+
+
+def make_one(state, renderer):
+    posted = state["posted"]
+    for attempt in range(1, MAX_ATTEMPTS + 1):
         print("Attempt", attempt)
         picked = pick_hadith(posted)
         if not picked:
-            print("No hadith available")
+            print("No usable hadith found")
             return False
-        key, h, uid = picked
-        arabic = clean(h["arabic"])
-        if arabic.endswith(" ."):
-            arabic = arabic[:-2] + "."
-        narrator = clean(h["english"].get("narrator", ""))
-        english = clean(h["english"]["text"])
+        key, h, uid, c = picked
         try:
-            user_text = (
-                "Arabic:\n" + arabic + "\n\nEnglish narrator: " + narrator
-                + "\nEnglish text:\n" + english
-            )
-            bengali = ask_ai(SYS_TRANSLATE, user_text)
-            bengali = clean(bengali.replace("—", ", ").replace("–", ", "))
-            verdict = ask_ai(
-                SYS_VERIFY,
-                "Arabic:\n" + arabic + "\n\nEnglish:\n" + english
-                + "\n\nBengali:\n" + bengali,
-            ).strip()
+            a = analyze(c)
+            if not a:
+                print(uid, "| bad AI answer")
+                continue
+            if not a["prophet"] or not a["suitable"]:
+                print(uid, "| skipped:", a["reason"][:120])
+                continue
+            if len(a["bengali"]) < 10:
+                continue
+            verdict = verify(c, a)
         except Exception as e:
             print("Skipping, AI failed:", type(e).__name__)
             continue
@@ -353,51 +309,71 @@ def make_one(posted):
             continue
 
         ref = BOOKS[key]["name"] + ", হাদিস " + bn_digits(h["idInBook"])
+        if a["narrator_bn"]:
+            ref += " | " + a["narrator_bn"]
+        short = len(a["bengali"]) <= CARD_MAX_CHARS
+        if short:
+            spec = {"text": a["bengali"], "arabic": c["arabic_quote"],
+                    "ref": ref, "highlights": a["highlights"]}
+        elif a["hook"]:
+            spec = {"text": a["hook"], "arabic": "", "ref": ref, "highlights": []}
+        else:
+            print(uid, "| long and no hook, skipped")
+            continue
+
+        style, base = choose_look(state)
         try:
-            if len(bengali) <= CARD_MAX_CHARS:
-                render_card(bengali, ref)
-                full_caption = bengali + "\n\n📚 " + ref
-                if len(full_caption) <= 1024:
-                    tg_photo("card.png", full_caption)
+            info = renderer.render(spec, "card.png", style=style, base_path=base)
+            print("Card:", info)
+            if short:
+                caption = a["bengali"] + "\n\n📚 " + ref
+                if len(caption) <= 1024:
+                    tg_photo("card.png", caption)
                 else:
                     tg_photo("card.png", "📚 " + ref)
-                    tg_text(full_caption)
+                    tg_text(caption)
             else:
-                hook = clean(ask_ai(SYS_HOOK, "Bengali hadith:\n" + bengali))
-                hook = hook.replace("—", ",").strip("\"“”")
-                render_card(hook, ref)
-                tg_photo("card.png", hook + "\n\n📚 " + ref)
-                tg_text(bengali + "\n\n📚 " + ref)
-
+                tg_photo("card.png", a["hook"] + "\n\n📚 " + ref)
+                body = a["bengali"] + "\n\n📚 " + ref
+                if c["arabic_quote"]:
+                    body = c["arabic_quote"] + "\n\n" + body
+                tg_text(body)
             if REVIEW_MODE:
                 tg_text(
                     "🔎 যাচাই (শুধু রিভিউয়ের জন্য)\n"
                     "AI check: " + verdict + "\n"
+                    "Style: " + info["style"] + " | Base: " + info["base"] + "\n"
                     "Link: https://sunnah.com/" + key + ":" + str(h["idInBook"]) + "\n\n"
-                    "Arabic:\n" + arabic + "\n\nEnglish:\n" + english
+                    "English quote:\n" + c["english_quote"] + "\n\n"
+                    "Arabic (full):\n" + c["arabic_full"][:1500] + "\n\n"
+                    "English (full):\n" + c["english"][:1500]
                 )
         except Exception as e:
             print("Post failed:", type(e).__name__, str(e)[:200])
             continue
 
         posted.append(uid)
-        save_state(posted)
+        state["styles"].append(info["style"])
+        state["bases"].append(info["base"])
+        save_state(state)
         print("Posted", uid)
         return True
     return False
 
 
 def main():
-    posted = load_state()
+    state = load_state()
     done = 0
-    for i in range(COUNT):
-        print("=== Post", i + 1, "of", COUNT, "===")
-        if make_one(posted):
-            done += 1
-        time.sleep(4)
+    with cards.CardRenderer() as renderer:
+        for i in range(COUNT):
+            print("=== Post", i + 1, "of", COUNT, "===")
+            if make_one(state, renderer):
+                done += 1
+            time.sleep(3)
     print("Posted this run:", done)
     if done == 0:
         sys.exit(1)
 
 
-main()
+if __name__ == "__main__":
+    main()
