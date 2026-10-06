@@ -1,15 +1,30 @@
-[
- "nawawi40:16",
- "nawawi40:5",
- "bukhari:4584",
- "bukhari:1254",
- "nawawi40:27",
- "muslim:7385",
- "muslim:5271",
- "muslim:5120",
- "bukhari:3471",
- "nawawi40:6",
- "muslim:4143",
- "bukhari:2033",
- "nawawi40:33"
-]
+{
+ "posted": [
+  "nawawi40:16",
+  "nawawi40:5",
+  "bukhari:4584",
+  "bukhari:1254",
+  "nawawi40:27",
+  "muslim:7385",
+  "muslim:5271",
+  "muslim:5120",
+  "bukhari:3471",
+  "nawawi40:6",
+  "muslim:4143",
+  "bukhari:2033",
+  "nawawi40:33",
+  "nawawi40:12",
+  "muslim:6732",
+  "nawawi40:34"
+ ],
+ "styles": [
+  "arch",
+  "side",
+  "gradient"
+ ],
+ "bases": [
+  "18_Snowy-mountain-peaks-at-blue-hour-with-a-soft-grad.jpg",
+  "2_Lavender-and-violet-alcohol-ink-wash-with-thin-gol.jpg",
+  "14_Soft-cloudy-blue-sky-with-golden-sun-rays-and-sunl.jpg"
+ ]
+}
