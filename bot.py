@@ -35,15 +35,6 @@ STATE_FILE = "posted.json"
 CARD_MAX_CHARS = 260
 MAX_ATTEMPTS = 14
 
-BLOCK_WORDS = [
-    "menstru", "intercourse", "semen", "penis", "vagina", "private part", "adulter",
-    "fornicat", "castrat", "urine", "urinat", "excrement", "feces", "slave girl",
-    "concubine", "captive", "sodomy", "homosexual", "nakedness", "naked", "genital",
-    "sexual", "lust", "wet dream", "ghusl", "janabah", "impurity",
-    "change it with his hand", "fight", "kill", "slay", "jihad", "retaliat",
-    "hellfire", "punish", "flog", "stone", "cut off", "apostate", "dajjal",
-    "antichrist", "last hour", "day of judgment", "grave", "torment",
-]
 
 SYS_ANALYZE = (
     "You help prepare Bengali social media cards from hadith. You receive the "
@@ -53,17 +44,13 @@ SYS_ANALYZE = (
     '"speaker_is_prophet": true only if the quoted words were spoken by Prophet '
     "Muhammad (peace be upon him) himself, including him reporting the words of "
     "Allah. false if the words belong to a Companion, a follower or anyone else.\n"
-    '"suitable": true only if the quoted words are clear and meaningful on their '
-    "own for a general Muslim audience, and are about character, faith, "
-    "remembrance, mercy, patience, gratitude, family, charity, knowledge, good "
-    "deeds, simple worship reminders or supplications. false if they need a "
-    "specific event or context to be understood, are legal or ritual technicalities "
-    "(purity, inheritance, trade, detailed prayer rules), involve graphic "
-    "punishment, sexual or bodily topics, specific tribes, people or political "
-    "matters, sectarian or controversial matters, signs of the end times or unseen "
-    "details, or anything that could mislead when shortened. Also false if the "
-    "Arabic and English quoted words are clearly not the same statement. "
-    "When in doubt, false.\n"
+    '"suitable": true if the quoted words form a complete thought that a general '
+    "Muslim reader can understand and benefit from on their own. false only if "
+    "the words are incomplete or meaningless without the rest of the hadith, are "
+    "a purely technical procedure (exact steps of prayer or purification, "
+    "zakat calculations, inheritance shares, contract details), or depend on a "
+    "specific named event or dispute. Also false if the Arabic and English "
+    "quoted words are clearly not the same statement. When unsure, true.\n"
     '"reason": a short English reason.\n'
     '"bengali": a faithful, natural, simple Bengali translation of ONLY the quoted '
     "words. Never add, remove or explain anything. Do not include the narrator "
@@ -116,41 +103,78 @@ def strip_marks(s):
     return re.sub("[\u200e\u200f\u202a-\u202e\u2066-\u2069]", "", s)
 
 
+def _nested(s, op, cl):
+    out, depth, start = [], 0, None
+    for i, ch in enumerate(s):
+        if ch == op:
+            if depth == 0:
+                start = i + 1
+            depth += 1
+        elif ch == cl and depth > 0:
+            depth -= 1
+            if depth == 0 and start is not None:
+                out.append(s[start:i])
+                start = None
+    return out
+
+
 def quotes(s):
     s = strip_marks(s)
-    found = []
-    found += re.findall("\u201c([^\u201d]+)\u201d", s)
-    found += re.findall("\u00ab([^\u00bb]+)\u00bb", s)
-    found += re.findall('"([^"]+)"', s)
+    found = _nested(s, "\u201c", "\u201d") + _nested(s, "\u00ab", "\u00bb")
+    if s.count('"') >= 2 and s.count('"') % 2 == 0:
+        parts = s.split('"')
+        found += [p for k, p in enumerate(parts) if k % 2 == 1]
     return [clean(q) for q in found if clean(q)]
 
 
+MODELS = ["openai"]
+
+
+def init_models():
+    """Add a few more chat models as fallbacks for requests the first one refuses."""
+    try:
+        r = requests.get("https://gen.pollinations.ai/text/models",
+                         headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
+        names = []
+        for m in r.json():
+            n = m.get("name") if isinstance(m, dict) else m
+            if isinstance(n, str):
+                names.append(n)
+        bad = ("image", "audio", "video", "tts", "whisper", "vision", "search", "openai")
+        extra = [n for n in names if not any(b in n.lower() for b in bad)][:3]
+        MODELS[:] = ["openai"] + extra
+    except Exception as e:
+        print("Model list not available:", type(e).__name__)
+    print("Models:", MODELS)
+
+
 def ask_ai(system, user):
-    payload = {
-        "model": "openai",
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-    }
     headers = {
         "Authorization": "Bearer " + POLL_KEY,
         "User-Agent": "Mozilla/5.0",
     }
-    for _ in range(3):
-        try:
-            r = requests.post(CHAT_URL, json=payload, headers=headers, timeout=120)
-            if r.ok:
-                return r.json()["choices"][0]["message"]["content"].strip()
-            print("AI error", r.status_code, r.text[:160])
-            if r.status_code in (400, 401, 402, 403, 404, 422):
-                raise RuntimeError("AI rejected request: %d" % r.status_code)
-        except RuntimeError:
-            raise
-        except Exception as e:
-            print("AI exception", type(e).__name__)
-        time.sleep(5)
-    raise RuntimeError("AI request failed")
+    rejected = 0
+    for model in MODELS:
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        }
+        for _ in range(3):
+            try:
+                r = requests.post(CHAT_URL, json=payload, headers=headers, timeout=120)
+                if r.ok:
+                    return r.json()["choices"][0]["message"]["content"].strip()
+                print("AI error", model, r.status_code, r.text[:120])
+                if r.status_code in (400, 401, 402, 403, 404, 422):
+                    rejected += 1
+                    break
+            except Exception as e:
+                print("AI exception", type(e).__name__)
+            time.sleep(5)
+    raise RuntimeError("AI request failed (rejected by %d models)" % rejected)
 
 
 def parse_json(text):
@@ -205,9 +229,6 @@ def candidate(h):
     arabic_full = clean(strip_marks(h.get("arabic", "")))
     if not english or not arabic_full:
         return None
-    low = english.lower()
-    if any(w in low for w in BLOCK_WORDS):
-        return None
     en_q = quotes(english)
     if len(en_q) != 1 or not (25 <= len(en_q[0]) <= 900):
         return None
@@ -245,6 +266,10 @@ def pick_hadith(posted):
     return None
 
 
+def truthy(v):
+    return v is True or (isinstance(v, str) and v.strip().lower() in ("true", "yes"))
+
+
 def analyze(c):
     user = (
         "Narrator: " + c["narrator"] + "\n\n"
@@ -263,8 +288,8 @@ def analyze(c):
     if hook and (hook not in bengali or len(hook.split()) > 14):
         hook = ""
     return {
-        "prophet": data.get("speaker_is_prophet") is True,
-        "suitable": data.get("suitable") is True,
+        "prophet": truthy(data.get("speaker_is_prophet")),
+        "suitable": truthy(data.get("suitable")),
         "reason": clean(str(data.get("reason", ""))),
         "bengali": bengali,
         "narrator_bn": clean(str(data.get("narrator_bn", "")))[:40],
@@ -340,7 +365,8 @@ def make_one(state, renderer):
                 print(uid, "| bad AI answer")
                 continue
             if not a["prophet"] or not a["suitable"]:
-                print(uid, "| skipped:", a["reason"][:120])
+                print(uid, "| skipped | prophet=%s suitable=%s | %s"
+                      % (a["prophet"], a["suitable"], a["reason"][:120]))
                 continue
             if len(a["bengali"]) < 10:
                 continue
@@ -406,6 +432,7 @@ def make_one(state, renderer):
 
 
 def main():
+    init_models()
     state = load_state()
     done = 0
     with cards.CardRenderer() as renderer:
