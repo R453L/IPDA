@@ -15,16 +15,22 @@
   "nawawi40:33",
   "nawawi40:12",
   "muslim:6732",
-  "nawawi40:34"
+  "nawawi40:34",
+  "nawawi40:11",
+  "bukhari:6114"
  ],
  "styles": [
   "arch",
   "side",
-  "gradient"
+  "gradient",
+  "double",
+  "chamfer"
  ],
  "bases": [
   "18_Snowy-mountain-peaks-at-blue-hour-with-a-soft-grad.jpg",
   "2_Lavender-and-violet-alcohol-ink-wash-with-thin-gol.jpg",
-  "14_Soft-cloudy-blue-sky-with-golden-sun-rays-and-sunl.jpg"
+  "14_Soft-cloudy-blue-sky-with-golden-sun-rays-and-sunl.jpg",
+  "9_Deep-emerald-green-border-with-a-thin-gold-frame-l.jpg",
+  "13_Calm-lake-at-sunset-reflecting-a-warm-orange-and-p.jpg"
  ]
 }
