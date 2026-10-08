@@ -38,11 +38,14 @@ BOOKS = {
     "muslim": {"path": "the_9_books/muslim.json", "name": "সহীহ মুসলিম", "weight": 3},
 }
 STATE_FILE = "posted.json"
-CARD_MAX_CHARS = 260
+CARD_MAX_CHARS = 320
 MAX_ATTEMPTS = 12
 SLEEP_SECS = 24 * 3600
-NEUTRAL_LABELS = ["আজকের হাদিস", "হাদিসের বাণী"]
-PROPHET_WORDS = ["Prophet", "Messenger", "Apostle", "\ufdfa", "peace be upon him", "peace and blessings"]
+PROPHET_RE = re.compile(r"Prophet|Messenger|Apostle|\ufdfa|peace be upon", re.I)
+CHAIN_RE = re.compile(r"^(this|these|the same)\b.{0,40}\b(hadith|ahadith|tradition|traditions|narration)\b|"
+                      r"has been (narrated|reported|transmitted|handed down)|have been (narrated|reported|transmitted)|"
+                      r"with the same chain|through (another|a different) chain|chain of transmitters", re.I)
+NO_LABEL_STYLES = ("ribbon", "pill")
 
 PROVIDERS = {
     "or": "https://openrouter.ai/api/v1/chat/completions",
@@ -52,42 +55,37 @@ PROVIDERS = {
 TRIES = {"or": 8, "ds": 4, "pl": 1}
 
 SYS_ANALYZE = (
-    "You help prepare Bengali social media cards from hadith. You receive a mode, "
-    "the narrator, the text to translate, and sometimes the Arabic. Mode 'quote' "
-    "means the text is the quoted words only. Mode 'narration' means the text is "
-    "the whole narration. Reply with ONE JSON object and nothing else, with "
-    "exactly these keys:\n"
-    '"speaker_is_prophet": true only if, in mode quote, the quoted words were '
-    "spoken by Prophet Muhammad (peace be upon him) himself, including him "
-    "reporting the words of Allah. false if they belong to a Companion, a "
-    "follower or anyone else, and always false in mode narration.\n"
-    '"bengali": a faithful, natural, simple Bengali translation of exactly the '
-    "text to translate. Never add, remove, summarise or explain anything, and "
-    "keep every statement, command and prayer in its original form (a prayer "
-    "stays a prayer, a command stays a command). Do not include the narrator's "
-    "name or the chain of narrators, and do not start with 'রাসূলুল্লাহ ﷺ "
-    "বলেছেন' unless the text itself says so. Write the Prophet as "
-    "'রাসূলুল্লাহ ﷺ', Allah as 'আল্লাহ', and put (রাঃ) after companions' names. "
-    "Do not use dash symbols; use commas or full stops instead.\n"
-    '"narrator_bn": the Bengali name of the Companion narrator with (রাঃ), for '
-    "example 'আবূ হুরাইরাহ (রাঃ)', or an empty string if unclear.\n"
+    "You help prepare Bengali social media cards from hadith. You receive the "
+    "narrator line and the text of one hadith. Reply with ONE JSON object and "
+    "nothing else, with exactly these keys:\n"
+    '"prophet_report": true if the hadith reports something that Prophet '
+    "Muhammad (peace be upon him) said, did or approved, including him reporting "
+    "the words of Allah. false if it is only a statement or opinion of a Companion "
+    "or follower, or only a note about chains of narrators.\n"
+    '"bengali": a faithful, natural, simple Bengali translation of the narrator '
+    "line and the text together, as one passage. Keep exactly who narrated and who "
+    "said or did what (for example: 'আবূ হুরাইরাহ (রাঃ) বলেন, রাসূলুল্লাহ ﷺ "
+    "বলেছেন, ...'). Never add, remove, summarise or explain anything, and keep "
+    "every statement, command and prayer in its original form. Write the Prophet "
+    "as 'রাসূলুল্লাহ ﷺ' and Allah as 'আল্লাহ'. Add '(রাঃ)' after a name ONLY when "
+    "the English narrator line itself has '(ra)' or 'Allah be pleased with'; "
+    "otherwise add no honorific. Do not use dash symbols; use commas or full stops "
+    "instead.\n"
     '"highlights": a list of 1 to 3 key words or short phrases (at most 3 words '
     "each) copied EXACTLY as they appear inside your Bengali translation.\n"
     '"hook": one complete sentence copied EXACTLY from your Bengali translation, '
-    "at most 14 words, that works as a headline, or an empty string if there is "
+    "at most 20 words, that works as a headline, or an empty string if there is "
     "no such sentence."
 )
 SYS_VERIFY = (
     "You are a strict reviewer of Bengali translations of hadith. Compare the "
-    "Bengali with the English text and, when the Arabic is provided, also with "
-    "the Arabic. If the Arabic is not provided, judge against the English only "
-    "and do NOT fail the translation for that reason. Also check that the Bengali "
-    "narrator refers to the same person as the English narrator (different "
-    "spellings or a shorter form of the name are fine). Reply with exactly one "
-    "line: 'OK' if the Bengali is faithful, complete, adds nothing, changes no "
+    "Bengali with the English narrator line and text and, when the Arabic is "
+    "provided, also with the Arabic. If the Arabic is not provided, judge against "
+    "the English only and do NOT fail the translation for that reason. Check that "
+    "who narrated and who said or did each thing is preserved. Reply with exactly "
+    "one line: 'OK' if the Bengali is faithful, complete, adds nothing, changes no "
     "meaning, turns no supplication into a narration and no command into a "
-    "description, and the narrator is right; otherwise 'BAD: <short reason in "
-    "English>'."
+    "description; otherwise 'BAD: <short reason in English>'."
 )
 SYS_BACK = (
     "Translate the given Bengali text into plain, literal English. Output only "
@@ -102,7 +100,7 @@ SYS_COMPARE = (
     "statement or the reverse."
 )
 
-STATE = {"posted": [], "styles": [], "bases": [], "sleep": {}, "modelfail": {}}
+STATE = {"posted": [], "styles": [], "bases": [], "sleep": {}, "modelfail": {}, "why": {}}
 COOL = {}
 OR_MODELS = []
 DS_MODEL = "deepseek-chat"
@@ -184,6 +182,7 @@ def asleep(ident):
 
 def put_to_sleep(ident, why):
     STATE["sleep"][ident] = time.time() + SLEEP_SECS
+    STATE.setdefault("why", {})[ident] = str(why)[:90]
     print("  sleeping 24h:", ident, "|", why)
 
 
@@ -379,16 +378,17 @@ def init_models():
         except Exception as e:
             print("OpenRouter model list failed:", type(e).__name__)
     OR_MODELS[:] = models
-    if DS_KEYS:
+    for k in DS_KEYS:
         try:
             r = requests.get("https://api.deepseek.com/models",
-                             headers={"Authorization": "Bearer " + DS_KEYS[0]}, timeout=20)
+                             headers={"Authorization": "Bearer " + k}, timeout=20)
             ids = [m["id"] for m in r.json()["data"]]
             pick = [i for i in ids if "reason" not in i.lower()] or ids
             if pick:
                 DS_MODEL = pick[0]
-        except Exception as e:
-            print("DeepSeek model list failed:", type(e).__name__)
+                break
+        except Exception:
+            continue
     awake_or = len([k for k in OR_KEYS if not asleep(kid("or", k))])
     awake_ds = len([k for k in DS_KEYS if not asleep(kid("ds", k))])
     print("OpenRouter models:", OR_MODELS)
@@ -406,13 +406,14 @@ def load_state():
             STATE["posted"] = data
         elif isinstance(data, dict):
             STATE.update(data)
-    for k, v in (("posted", []), ("styles", []), ("bases", []), ("sleep", {}), ("modelfail", {})):
+    for k, v in (("posted", []), ("styles", []), ("bases", []), ("sleep", {}), ("modelfail", {}), ("why", {})):
         STATE.setdefault(k, v)
 
 
 def save_state():
     now = time.time()
     STATE["sleep"] = {k: v for k, v in STATE["sleep"].items() if v > now}
+    STATE["why"] = {k: v for k, v in STATE.get("why", {}).items() if k in STATE["sleep"]}
     STATE["styles"] = STATE["styles"][-8:]
     STATE["bases"] = STATE["bases"][-20:]
     with open(STATE_FILE, "w", encoding="utf-8") as f:
@@ -437,32 +438,30 @@ def load_book(key):
 
 
 def candidate(h):
-    """Usable hadith data, or None when the source text is broken or incomplete."""
+    """Usable hadith data, or None when the source is broken, incomplete or not about the Prophet."""
     english = clean(h.get("english", {}).get("text", ""))
     arabic_full = clean(strip_marks(h.get("arabic", "")))
+    narrator = clean(h.get("english", {}).get("narrator", ""))
     if not english or not arabic_full:
         return None
     if not (30 <= len(english) <= 1500) or not balanced(english):
         return None
     if english[-1] not in ".!?\"'\u201d\u2019)]":
         return None
-    narrator = clean(h.get("english", {}).get("narrator", ""))
+    unit = clean(narrator + " " + english)
+    if not PROPHET_RE.search(unit):
+        return None
+    if len(english) < 220 and CHAIN_RE.search(english[:200]):
+        return None
     en_q = quotes(english)
+    arabic_quote = ""
     if len(en_q) == 1 and 25 <= len(en_q[0]) <= 900:
-        mode = "quote"
-        unit = en_q[0]
         ar_q = quotes(arabic_full)
-        arabic_quote = ar_q[0] if len(ar_q) == 1 and len(ar_q[0]) <= 150 else ""
-        if arabic_quote and not (0.45 <= len(arabic_quote) / len(unit) <= 1.6):
-            arabic_quote = ""
-        idx = english.find(unit)
-        before = english[max(0, idx - 200):idx] if idx >= 0 else ""
-        prophet_hint = any(w in before for w in PROPHET_WORDS)
-    else:
-        mode, unit, arabic_quote, prophet_hint = "narration", english, "", False
+        if len(ar_q) == 1 and len(ar_q[0]) <= 150 and 0.45 <= len(ar_q[0]) / len(en_q[0]) <= 1.6:
+            arabic_quote = ar_q[0]
     return {
-        "mode": mode, "unit": unit, "english": english, "arabic_full": arabic_full,
-        "arabic_quote": arabic_quote, "narrator": narrator, "prophet_hint": prophet_hint,
+        "unit": unit, "english": english, "arabic_full": arabic_full,
+        "arabic_quote": arabic_quote, "narrator": narrator,
     }
 
 
@@ -486,13 +485,9 @@ def pick_hadith(posted):
 
 # ------------------------------------------------------------------ AI tasks
 def analyze(c):
-    user = (
-        "Mode: " + c["mode"] + "\n"
-        "Narrator: " + c["narrator"] + "\n\n"
-        "Text to translate:\n" + c["unit"] + "\n\n"
-        "Arabic of the quoted words:\n" + (c["arabic_quote"] or "not available") + "\n\n"
-        "Full English hadith (context only):\n" + c["english"][:1500]
-    )
+    user = "English narrator line and text:\n" + c["unit"]
+    if c["arabic_quote"]:
+        user += "\n\nArabic of the quoted words (for reference):\n" + c["arabic_quote"]
 
     def valid(t):
         d = parse_json(t)
@@ -505,12 +500,11 @@ def analyze(c):
     highlights = [clean(x) for x in (data.get("highlights") or []) if isinstance(x, str)]
     highlights = [x for x in highlights if x and x in bengali][:3]
     hook = clean(str(data.get("hook", "")))
-    if hook and (hook not in bengali or len(hook.split()) > 14):
+    if hook and (hook not in bengali or len(hook.split()) > 20):
         hook = ""
     return {
-        "prophet": truthy(data.get("speaker_is_prophet")),
+        "prophet_report": truthy(data.get("prophet_report")),
         "bengali": bengali,
-        "narrator_bn": clean(str(data.get("narrator_bn", "")))[:40],
         "highlights": highlights,
         "hook": hook,
         "translator": label,
@@ -520,10 +514,8 @@ def analyze(c):
 
 def verify(c, a):
     user = (
-        "Narrator (English): " + c["narrator"] + "\n"
-        "Narrator (Bengali): " + a["narrator_bn"] + "\n\n"
-        "Arabic:\n" + (c["arabic_quote"] or "not available") + "\n\n"
-        "English:\n" + c["unit"] + "\n\n"
+        "English narrator line and text:\n" + c["unit"] + "\n\n"
+        "Arabic quoted words:\n" + (c["arabic_quote"] or "not available") + "\n\n"
         "Bengali:\n" + a["bengali"]
     )
 
@@ -560,11 +552,12 @@ def verify(c, a):
 
 
 def fallback_hook(bengali):
-    first = re.split(r"(?<=[।?!])\s+", bengali)[0]
-    words = first.split()
-    if len(words) <= 18:
-        return first
-    return " ".join(words[:14]) + "…"
+    """A complete sentence from the translation, never cut in the middle."""
+    sents = [x for x in re.split(r"(?<=[।?!])\s+", bengali) if x]
+    ok = [x for x in sents[:4] if len(x.split()) <= 22]
+    if ok:
+        return min(ok, key=lambda x: abs(len(x.split()) - 12))
+    return sents[0] if sents else bengali
 
 
 # ------------------------------------------------------------------ telegram
@@ -593,7 +586,8 @@ def tg_photo(path, caption):
 
 
 def choose_look():
-    styles = [s for s in cards.STYLES if s not in STATE["styles"]] or list(cards.STYLES)
+    allowed = [x for x in cards.STYLES if x not in NO_LABEL_STYLES]
+    styles = [x for x in allowed if x not in STATE["styles"]] or allowed
     files = cards.list_bases()
     recent = set(STATE["bases"])
     fresh = [f for f in files if os.path.basename(f) not in recent] or files
@@ -620,23 +614,22 @@ def make_one(renderer):
                 print("All AI providers are unavailable right now, stopping this run.")
                 return "abort"
             continue
-        print(uid, "| mode:", c["mode"], "| translator:", a["translator"],
+        print(uid, "| translator:", a["translator"],
               "| verifier:", vlabel, "| verdict:", verdict[:200])
         if not verdict.upper().startswith("OK"):
             continue
 
+        if not a["prophet_report"]:
+            print(uid, "| skipped: not something the Prophet said or did")
+            continue
         ref = BOOKS[key]["name"] + ", হাদিস " + bn_digits(h["idInBook"])
-        if a["narrator_bn"]:
-            ref += " | " + a["narrator_bn"]
         short = len(a["bengali"]) <= CARD_MAX_CHARS
-        prophet = c["mode"] == "quote" and a["prophet"] and c["prophet_hint"]
-        label = random.choice(cards.LABELS if prophet else NEUTRAL_LABELS)
         if short:
             spec = {"text": a["bengali"], "arabic": c["arabic_quote"], "ref": ref,
-                    "highlights": a["highlights"], "label": label}
+                    "highlights": a["highlights"], "label": ""}
         else:
             hook = a["hook"] or fallback_hook(a["bengali"])
-            spec = {"text": hook, "arabic": "", "ref": ref, "highlights": [], "label": label}
+            spec = {"text": hook, "arabic": "", "ref": ref, "highlights": [], "label": ""}
 
         style, base = choose_look()
         try:
@@ -660,7 +653,7 @@ def make_one(renderer):
                     "🔎 যাচাই (শুধু রিভিউয়ের জন্য)\n"
                     "AI check: " + verdict + "\n"
                     "Translator: " + a["translator"] + " | Verifier: " + vlabel + "\n"
-                    "Mode: " + c["mode"] + " | Style: " + info["style"] + " | Base: " + info["base"] + "\n"
+                    "Style: " + info["style"] + " | Base: " + info["base"] + "\n"
                     "Link: https://sunnah.com/" + key + ":" + str(h["idInBook"]) + "\n\n"
                     "English (used):\n" + c["unit"] + "\n\n"
                     "Arabic (full):\n" + c["arabic_full"][:1500]
@@ -678,11 +671,96 @@ def make_one(renderer):
     return False
 
 
+def check_keys():
+    """Ask each provider about each key (no free-quota used). Returns report lines."""
+    now = time.time()
+    lines = []
+    ok_or = ok_ds = 0
+    lines.append("📡 API স্ট্যাটাস")
+    lines.append("")
+    lines.append("OpenRouter (%d কী):" % len(OR_KEYS))
+    for i, k in enumerate(OR_KEYS, 1):
+        ident = kid("or", k)
+        tag = "#%d (…%s)" % (i, k[-4:])
+        try:
+            r = requests.get("https://openrouter.ai/api/v1/auth/key",
+                             headers={"Authorization": "Bearer " + k}, timeout=20)
+            if r.status_code == 200:
+                d = (r.json() or {}).get("data", {}) or {}
+                extra = ""
+                if d.get("limit") is not None and d.get("usage") is not None:
+                    extra = " | ব্যবহার %.3f/%s" % (float(d["usage"]), d["limit"])
+                lines.append("✅ %s চালু%s" % (tag, extra))
+                STATE["sleep"].pop(ident, None)
+                ok_or += 1
+            elif r.status_code in (401, 403):
+                lines.append("❌ %s অকার্যকর কী (%d)" % (tag, r.status_code))
+                put_to_sleep(ident, "key check %d" % r.status_code)
+            else:
+                lines.append("⚠️ %s অজানা (%d)" % (tag, r.status_code))
+        except Exception as e:
+            lines.append("⚠️ %s যাচাই করা যায়নি (%s)" % (tag, type(e).__name__))
+        if asleep(ident):
+            hrs = int((STATE["sleep"][ident] - now) / 3600) + 1
+            lines[-1] += " | 😴 ঘুমে ~%dঘ" % hrs
+    lines.append("")
+    lines.append("DeepSeek (%d কী):" % len(DS_KEYS))
+    for i, k in enumerate(DS_KEYS, 1):
+        ident = kid("ds", k)
+        tag = "#%d (…%s)" % (i, k[-4:])
+        try:
+            r = requests.get("https://api.deepseek.com/user/balance",
+                             headers={"Authorization": "Bearer " + k}, timeout=20)
+            if r.status_code == 200:
+                d = r.json() or {}
+                bal = ", ".join("%s %s" % (b.get("total_balance"), b.get("currency"))
+                                for b in d.get("balance_infos", []))
+                if d.get("is_available"):
+                    lines.append("✅ %s চালু | ব্যালেন্স %s" % (tag, bal or "?"))
+                    STATE["sleep"].pop(ident, None)
+                    ok_ds += 1
+                else:
+                    lines.append("💸 %s ব্যালেন্স শেষ | %s" % (tag, bal or "0"))
+                    put_to_sleep(ident, "no balance")
+            elif r.status_code in (401, 403):
+                lines.append("❌ %s অকার্যকর কী (%d)" % (tag, r.status_code))
+                put_to_sleep(ident, "key check %d" % r.status_code)
+            elif r.status_code == 402:
+                lines.append("💸 %s ব্যালেন্স শেষ (402)" % tag)
+                put_to_sleep(ident, "no balance")
+            else:
+                lines.append("⚠️ %s অজানা (%d)" % (tag, r.status_code))
+        except Exception as e:
+            lines.append("⚠️ %s যাচাই করা যায়নি (%s)" % (tag, type(e).__name__))
+        if asleep(ident):
+            hrs = int((STATE["sleep"][ident] - now) / 3600) + 1
+            lines[-1] += " | 😴 ঘুমে ~%dঘ" % hrs
+    lines.append("")
+    lines.append("Pollinations: %s" % ("কী আছে (শেষ ভরসা)" if POLL_KEY else "কী নেই"))
+    lines.append("")
+    lines.append("সারাংশ: OpenRouter %d/%d চালু, DeepSeek %d/%d চালু"
+                 % (ok_or, len(OR_KEYS), ok_ds, len(DS_KEYS)))
+    return lines
+
+
+def send_report():
+    try:
+        lines = check_keys()
+        print("\n".join(lines))
+        tg_text("\n".join(lines))
+    except Exception as e:
+        print("Report failed:", type(e).__name__, str(e)[:150])
+
+
 def main():
     if not (OR_KEYS or DS_KEYS or POLL_KEY):
         print("No AI keys configured")
         sys.exit(1)
     load_state()
+    if COUNT == 0:
+        send_report()
+        save_state()
+        return
     init_models()
     done = 0
     try:
@@ -696,6 +774,8 @@ def main():
                     done += 1
                 time.sleep(2)
     finally:
+        if REVIEW_MODE:
+            send_report()
         save_state()
     print("Posted this run:", done)
     if done == 0:
