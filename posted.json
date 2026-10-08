@@ -26,17 +26,20 @@
   "muslim:1648",
   "muslim:5029",
   "muslim:6065",
-  "nawawi40:42"
+  "nawawi40:42",
+  "nawawi40:32",
+  "bukhari:1522",
+  "muslim:5950"
  ],
  "styles": [
-  "cream",
-  "solid",
-  "medal",
   "glass",
   "directline",
   "offset",
   "stack",
-  "directleft"
+  "directleft",
+  "gradient",
+  "tilt",
+  "double"
  ],
  "bases": [
   "18_Snowy-mountain-peaks-at-blue-hour-with-a-soft-grad.jpg",
@@ -52,7 +55,10 @@
   "15_Warm-autumn-leaves-in-orange-red-and-gold-framing-.jpg",
   "20_Tropical-monstera-and-palm-leaves-in-rich-green-fr.jpg",
   "4_Islamic-geometric-star-pattern-frame-in-teal-blue-.jpg",
-  "5_Bright-cream-wall-with-an-elegant-thin-gold-arch-o.jpg"
+  "5_Bright-cream-wall-with-an-elegant-thin-gold-arch-o.jpg",
+  "11_Serene-desert-dunes-at-sunrise-with-a-soft-peach-a.jpg",
+  "22_Pastel-mesh-gradient-from-blush-pink-to-lavender-w.jpg",
+  "1_Delicate-watercolor-blue-hydrangea-flowers-with-so.jpg"
  ],
  "sleep": {
   "or:59df6f90": 1791524683.6434608,
@@ -60,9 +66,9 @@
   "or:6ddd3ce6": 1791524683.3101938,
   "or:f380be3b": 1791524683.4090273,
   "or:80a448b0": 1791524683.5310335,
-  "ds:8f297df3": 1791528990.255779,
+  "ds:8f297df3": 1791544213.6069698,
   "ds:df481fa7": 1791524684.1107316,
-  "ds:8e73676b": 1791528990.9935966,
+  "ds:8e73676b": 1791544214.3584993,
   "ds:a0b32084": 1791524686.0670218,
   "ds:df5c2d54": 1791524686.4774425,
   "ds:5225c0e7": 1791524685.3328123,
@@ -92,5 +98,43 @@
   "ds:df5c2d54": "key check 401",
   "model:or/nvidia/nemotron-3-ultra-550b-a55b:free": "3 bad answers in a row",
   "model:or/nvidia/nemotron-3.5-lightning:free": "3 bad answers in a row"
+ },
+ "dead401": {
+  "or:fc356ef1": [
+   1,
+   0
+  ],
+  "or:6ddd3ce6": [
+   1,
+   0
+  ],
+  "or:f380be3b": [
+   1,
+   0
+  ],
+  "or:80a448b0": [
+   1,
+   0
+  ],
+  "or:59df6f90": [
+   1,
+   0
+  ],
+  "ds:df481fa7": [
+   1,
+   0
+  ],
+  "ds:5225c0e7": [
+   1,
+   0
+  ],
+  "ds:a0b32084": [
+   1,
+   0
+  ],
+  "ds:df5c2d54": [
+   1,
+   0
+  ]
  }
 }
