@@ -23,17 +23,20 @@
   "muslim:3225",
   "bukhari:5255",
   "bukhari:6606",
-  "muslim:1648"
+  "muslim:1648",
+  "muslim:5029",
+  "muslim:6065",
+  "nawawi40:42"
  ],
  "styles": [
-  "double",
-  "chamfer",
-  "direct",
   "cream",
   "solid",
   "medal",
   "glass",
-  "directline"
+  "directline",
+  "offset",
+  "stack",
+  "directleft"
  ],
  "bases": [
   "18_Snowy-mountain-peaks-at-blue-hour-with-a-soft-grad.jpg",
@@ -46,7 +49,10 @@
   "12_Misty-green-hills-at-dawn-with-a-soft-pastel-pink-.jpg",
   "19_Sunlit-forest-with-gentle-light-rays-green-moss-an.jpg",
   "16_Cherry-blossom-branches-in-full-bloom-framing-the-.jpg",
-  "15_Warm-autumn-leaves-in-orange-red-and-gold-framing-.jpg"
+  "15_Warm-autumn-leaves-in-orange-red-and-gold-framing-.jpg",
+  "20_Tropical-monstera-and-palm-leaves-in-rich-green-fr.jpg",
+  "4_Islamic-geometric-star-pattern-frame-in-teal-blue-.jpg",
+  "5_Bright-cream-wall-with-an-elegant-thin-gold-arch-o.jpg"
  ],
  "sleep": {
   "or:59df6f90": 1791524683.6434608,
@@ -54,16 +60,23 @@
   "or:6ddd3ce6": 1791524683.3101938,
   "or:f380be3b": 1791524683.4090273,
   "or:80a448b0": 1791524683.5310335,
-  "ds:8f297df3": 1791526875.3626997,
+  "ds:8f297df3": 1791528990.255779,
   "ds:df481fa7": 1791524684.1107316,
-  "ds:8e73676b": 1791526876.1228685,
+  "ds:8e73676b": 1791528990.9935966,
   "ds:a0b32084": 1791524686.0670218,
   "ds:df5c2d54": 1791524686.4774425,
-  "ds:5225c0e7": 1791524685.3328123
+  "ds:5225c0e7": 1791524685.3328123,
+  "model:or/nvidia/nemotron-3-ultra-550b-a55b:free": 1791527694.6927,
+  "model:or/nvidia/nemotron-3.5-lightning:free": 1791528852.3451817
  },
  "modelfail": {
   "model:ds/deepseek-chat": 0,
-  "model:pl/openai": 0
+  "model:pl/openai": 0,
+  "model:or/nvidia/nemotron-3-ultra-550b-a55b:free": 0,
+  "model:ds/deepseek-flash": 0,
+  "model:or/nvidia/nemotron-3-super-120b-a12b:free": 0,
+  "model:or/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free": 1,
+  "model:or/nvidia/nemotron-3.5-lightning:free": 0
  },
  "why": {
   "or:fc356ef1": "key check 401",
@@ -76,6 +89,8 @@
   "ds:5225c0e7": "key check 401",
   "ds:8e73676b": "no balance",
   "ds:a0b32084": "key check 401",
-  "ds:df5c2d54": "key check 401"
+  "ds:df5c2d54": "key check 401",
+  "model:or/nvidia/nemotron-3-ultra-550b-a55b:free": "3 bad answers in a row",
+  "model:or/nvidia/nemotron-3.5-lightning:free": "3 bad answers in a row"
  }
 }
