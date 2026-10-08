@@ -41,6 +41,9 @@ STATE_FILE = "posted.json"
 CARD_MAX_CHARS = 320
 MAX_ATTEMPTS = 12
 SLEEP_SECS = 24 * 3600
+SLEEP_LONG = 30 * 24 * 3600
+GH_TOKEN = os.environ.get("GH_SECRETS_TOKEN", "").strip()
+GH_REPO = os.environ.get("GITHUB_REPOSITORY", "").strip()
 PROPHET_RE = re.compile(r"Prophet|Messenger|Apostle|\ufdfa|peace be upon", re.I)
 CHAIN_RE = re.compile(r"^(this|these|the same)\b.{0,40}\b(hadith|ahadith|tradition|traditions|narration)\b|"
                       r"has been (narrated|reported|transmitted|handed down)|have been (narrated|reported|transmitted)|"
@@ -100,7 +103,7 @@ SYS_COMPARE = (
     "statement or the reverse."
 )
 
-STATE = {"posted": [], "styles": [], "bases": [], "sleep": {}, "modelfail": {}, "why": {}}
+STATE = {"posted": [], "styles": [], "bases": [], "sleep": {}, "modelfail": {}, "why": {}, "dead401": {}}
 COOL = {}
 OR_MODELS = []
 DS_MODEL = "deepseek-chat"
@@ -180,10 +183,23 @@ def asleep(ident):
     return STATE["sleep"].get(ident, 0) > time.time()
 
 
-def put_to_sleep(ident, why):
-    STATE["sleep"][ident] = time.time() + SLEEP_SECS
+def put_to_sleep(ident, why, long=False):
+    STATE["sleep"][ident] = time.time() + (SLEEP_LONG if long else SLEEP_SECS)
     STATE.setdefault("why", {})[ident] = str(why)[:90]
-    print("  sleeping 24h:", ident, "|", why)
+    print("  sleeping %s: %s | %s" % ("30 days" if long else "24h", ident, why))
+
+
+def strike(ident):
+    """Count a separate 'invalid key' observation (at least 30 minutes apart)."""
+    rec = STATE.setdefault("dead401", {}).get(ident, [0, 0])
+    if time.time() - rec[1] > 1800:
+        rec = [rec[0] + 1, time.time()]
+    STATE["dead401"][ident] = rec
+    return rec[0]
+
+
+def clear_strike(ident):
+    STATE.setdefault("dead401", {}).pop(ident, None)
 
 
 def cooling(ident):
@@ -205,7 +221,9 @@ def good_answer(mident):
 
 def classify(status, body):
     b = body.lower()
-    if status in (401, 403, 402):
+    if status in (401, 403):
+        return "key_invalid"
+    if status == 402:
         return "key_dead"
     if status == 429:
         if any(w in b for w in ("per-day", "per day", "daily", "free-models-per-day")):
@@ -319,7 +337,10 @@ def chat(role, system, user, validator=None, avoid=None):
             good_answer(mident)
             return text, provider + ":" + model, model
         print("  %s/%s failed: %s" % (provider, model, text[:140]))
-        if status == "key_dead":
+        if status == "key_invalid":
+            strike(kident)
+            put_to_sleep(kident, text[:80], long=True)
+        elif status == "key_dead":
             put_to_sleep(kident, text[:80])
         elif status == "model_dead":
             put_to_sleep(mident, text[:80])
@@ -406,8 +427,12 @@ def load_state():
             STATE["posted"] = data
         elif isinstance(data, dict):
             STATE.update(data)
-    for k, v in (("posted", []), ("styles", []), ("bases", []), ("sleep", {}), ("modelfail", {}), ("why", {})):
+    for k, v in (("posted", []), ("styles", []), ("bases", []), ("sleep", {}), ("modelfail", {}),
+                 ("why", {}), ("dead401", {})):
         STATE.setdefault(k, v)
+    for ident, why in STATE["why"].items():
+        if ("401" in why or "403" in why) and ident not in STATE["dead401"]:
+            STATE["dead401"][ident] = [1, 0]
 
 
 def save_state():
@@ -671,14 +696,25 @@ def make_one(renderer):
     return False
 
 
+def _hours(ident):
+    return int((STATE["sleep"][ident] - time.time()) / 3600) + 1
+
+
 def check_keys():
-    """Ask each provider about each key (no free-quota used). Returns report lines."""
-    now = time.time()
-    lines = []
-    ok_or = ok_ds = 0
-    lines.append("📡 API স্ট্যাটাস")
-    lines.append("")
-    lines.append("OpenRouter (%d কী):" % len(OR_KEYS))
+    """Ask each provider about each key (uses no free quota).
+    Returns (report lines, raw invalid or-keys, raw invalid ds-keys)."""
+    lines = ["📡 API স্ট্যাটাস", "", "OpenRouter (%d কী):" % len(OR_KEYS)]
+    ok = {"or": 0, "ds": 0}
+    dead = {"or": [], "ds": []}
+
+    def invalid_line(provider, tag, ident, key, code):
+        n = strike(ident)
+        put_to_sleep(ident, "key check %d" % code, long=True)
+        if n >= 2:
+            dead[provider].append(key)
+            return "🗑️ %s অকার্যকর (%d, ২ বার নিশ্চিত)" % (tag, code)
+        return "❌ %s অকার্যকর (%d) | পরের রানেও একই হলে মুছে ফেলার যোগ্য" % (tag, code)
+
     for i, k in enumerate(OR_KEYS, 1):
         ident = kid("or", k)
         tag = "#%d (…%s)" % (i, k[-4:])
@@ -692,19 +728,18 @@ def check_keys():
                     extra = " | ব্যবহার %.3f/%s" % (float(d["usage"]), d["limit"])
                 lines.append("✅ %s চালু%s" % (tag, extra))
                 STATE["sleep"].pop(ident, None)
-                ok_or += 1
-            elif r.status_code in (401, 403):
-                lines.append("❌ %s অকার্যকর কী (%d)" % (tag, r.status_code))
-                put_to_sleep(ident, "key check %d" % r.status_code)
-            else:
-                lines.append("⚠️ %s অজানা (%d)" % (tag, r.status_code))
+                clear_strike(ident)
+                ok["or"] += 1
+                continue
+            if r.status_code in (401, 403):
+                lines.append(invalid_line("or", tag, ident, k, r.status_code))
+                continue
+            lines.append("⚠️ %s অজানা (%d)" % (tag, r.status_code))
         except Exception as e:
             lines.append("⚠️ %s যাচাই করা যায়নি (%s)" % (tag, type(e).__name__))
         if asleep(ident):
-            hrs = int((STATE["sleep"][ident] - now) / 3600) + 1
-            lines[-1] += " | 😴 ঘুমে ~%dঘ" % hrs
-    lines.append("")
-    lines.append("DeepSeek (%d কী):" % len(DS_KEYS))
+            lines[-1] += " | 😴 ঘুমে ~%dঘ" % _hours(ident)
+    lines += ["", "DeepSeek (%d কী):" % len(DS_KEYS)]
     for i, k in enumerate(DS_KEYS, 1):
         ident = kid("ds", k)
         tag = "#%d (…%s)" % (i, k[-4:])
@@ -718,13 +753,15 @@ def check_keys():
                 if d.get("is_available"):
                     lines.append("✅ %s চালু | ব্যালেন্স %s" % (tag, bal or "?"))
                     STATE["sleep"].pop(ident, None)
-                    ok_ds += 1
-                else:
-                    lines.append("💸 %s ব্যালেন্স শেষ | %s" % (tag, bal or "0"))
-                    put_to_sleep(ident, "no balance")
+                    clear_strike(ident)
+                    ok["ds"] += 1
+                    continue
+                lines.append("💸 %s ব্যালেন্স শেষ | %s" % (tag, bal or "0"))
+                clear_strike(ident)
+                put_to_sleep(ident, "no balance")
             elif r.status_code in (401, 403):
-                lines.append("❌ %s অকার্যকর কী (%d)" % (tag, r.status_code))
-                put_to_sleep(ident, "key check %d" % r.status_code)
+                lines.append(invalid_line("ds", tag, ident, k, r.status_code))
+                continue
             elif r.status_code == 402:
                 lines.append("💸 %s ব্যালেন্স শেষ (402)" % tag)
                 put_to_sleep(ident, "no balance")
@@ -733,19 +770,60 @@ def check_keys():
         except Exception as e:
             lines.append("⚠️ %s যাচাই করা যায়নি (%s)" % (tag, type(e).__name__))
         if asleep(ident):
-            hrs = int((STATE["sleep"][ident] - now) / 3600) + 1
-            lines[-1] += " | 😴 ঘুমে ~%dঘ" % hrs
-    lines.append("")
-    lines.append("Pollinations: %s" % ("কী আছে (শেষ ভরসা)" if POLL_KEY else "কী নেই"))
-    lines.append("")
-    lines.append("সারাংশ: OpenRouter %d/%d চালু, DeepSeek %d/%d চালু"
-                 % (ok_or, len(OR_KEYS), ok_ds, len(DS_KEYS)))
-    return lines
+            lines[-1] += " | 😴 ঘুমে ~%dঘ" % _hours(ident)
+    lines += ["", "Pollinations: %s" % ("কী আছে (শেষ ভরসা)" if POLL_KEY else "কী নেই"), "",
+              "সারাংশ: OpenRouter %d/%d চালু, DeepSeek %d/%d চালু"
+              % (ok["or"], len(OR_KEYS), ok["ds"], len(DS_KEYS))]
+    return lines, dead["or"], dead["ds"]
+
+
+def _gh(method, path, **kw):
+    headers = {"Authorization": "Bearer " + GH_TOKEN,
+               "Accept": "application/vnd.github+json",
+               "X-GitHub-Api-Version": "2022-11-28"}
+    return requests.request(method, "https://api.github.com" + path, headers=headers,
+                            timeout=30, **kw)
+
+
+def purge_secret(secret_name, all_keys, dead_keys):
+    """Remove confirmed-invalid keys from a repository secret. Returns a report line."""
+    keep = [k for k in all_keys if k not in dead_keys]
+    removed = len(all_keys) - len(keep)
+    if not removed:
+        return ""
+    if not (GH_TOKEN and GH_REPO):
+        return "🗑️ %s: %d কী মুছে ফেলার যোগ্য (অটো-ডিলিট বন্ধ, এখন ৩০ দিন ঘুমে)" % (secret_name, removed)
+    try:
+        if keep:
+            import base64
+            from nacl import encoding, public
+            pk = _gh("GET", "/repos/%s/actions/secrets/public-key" % GH_REPO).json()
+            box = public.SealedBox(public.PublicKey(pk["key"].encode(), encoding.Base64Encoder()))
+            enc = base64.b64encode(box.encrypt(",".join(keep).encode())).decode()
+            r = _gh("PUT", "/repos/%s/actions/secrets/%s" % (GH_REPO, secret_name),
+                    json={"encrypted_value": enc, "key_id": pk["key_id"]})
+        else:
+            r = _gh("DELETE", "/repos/%s/actions/secrets/%s" % (GH_REPO, secret_name))
+        if r.status_code in (201, 204):
+            for k in dead_keys:
+                ident = kid("or" if secret_name.startswith("OPEN") else "ds", k)
+                for key in ("sleep", "why", "dead401"):
+                    STATE.get(key, {}).pop(ident, None)
+            all_keys[:] = keep
+            return "🗑️ %s থেকে %d অকার্যকর কী মুছে ফেলা হয়েছে (বাকি %d)" % (secret_name, removed, len(keep))
+        return "⚠️ %s থেকে মুছতে পারিনি (GitHub %d)" % (secret_name, r.status_code)
+    except Exception as e:
+        return "⚠️ %s থেকে মুছতে পারিনি (%s)" % (secret_name, type(e).__name__)
 
 
 def send_report():
     try:
-        lines = check_keys()
+        lines, dead_or, dead_ds = check_keys()
+        extra = [x for x in (
+            purge_secret("OPENROUTER_API_KEYS", OR_KEYS, dead_or) if dead_or else "",
+            purge_secret("DEEPSEEK_API_KEYS", DS_KEYS, dead_ds) if dead_ds else "") if x]
+        if extra:
+            lines += [""] + extra
         print("\n".join(lines))
         tg_text("\n".join(lines))
     except Exception as e:
