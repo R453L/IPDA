@@ -7,7 +7,7 @@ import os
 import random
 import re
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw
 from playwright.sync_api import sync_playwright
 
 FONT_HEAD = (
@@ -196,7 +196,7 @@ HTML = """<html><head><meta charset="utf-8">__FONT__
 <body><div class="card" style="__VARS__">
 <div class="bg"></div><div class="shade"></div>
 <div class="panel st-__STYLE__" style="--fs:__FS__px">
-<div class="label">__LABEL__</div>
+__LABELDIV__
 <div class="orn"><i></i><b></b><i></i></div>
 __ARABIC__
 <div class="text">__TEXT__</div>
@@ -389,6 +389,11 @@ class CardRenderer:
         tf = "scaleX(%d) scale(%s)" % (random.choice([1, -1]), random.choice([1.0, 1.04, 1.08]))
         vars_css = "--w:%dpx;--tf:%s;" % (random.choice(widths), tf)
         vars_css += ";".join("--%s:%s" % (k.replace("_", "-"), v) for k, v in t.items())
+        if "label" in spec:
+            label = spec["label"]
+        else:
+            label = random.choice(LABELS)
+        label_html = '<div class="label">%s</div>' % build_text(label, []) if label else ""
         arabic = (spec.get("arabic") or "").strip()
         ar_html = '<div class="ar">%s</div>' % htmllib.escape(arabic) if arabic else ""
         page_html = (
@@ -397,7 +402,7 @@ class CardRenderer:
             .replace("__VARS__", vars_css)
             .replace("__STYLE__", style)
             .replace("__FS__", str(start_size(len(spec["text"]), bool(arabic))))
-            .replace("__LABEL__", build_text(spec.get("label") or random.choice(LABELS), []))
+            .replace("__LABELDIV__", label_html)
             .replace("__ARABIC__", ar_html)
             .replace("__TEXT__", build_text(spec["text"], spec.get("highlights")))
             .replace("__REF__", htmllib.escape(spec["ref"]))
