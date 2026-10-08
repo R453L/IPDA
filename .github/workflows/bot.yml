@@ -17,11 +17,14 @@ concurrency:
 jobs:
   post:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     env:
+      OPENROUTER_API_KEYS: ${{ secrets.OPENROUTER_API_KEYS }}
+      DEEPSEEK_API_KEYS: ${{ secrets.DEEPSEEK_API_KEYS }}
       POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      OPENROUTER_MODELS: ${{ vars.OPENROUTER_MODELS }}
       REVIEW_MODE: "1"
       COUNT: ${{ github.event.inputs.count || '1' }}
     steps:
