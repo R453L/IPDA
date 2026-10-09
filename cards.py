@@ -200,7 +200,7 @@ __LABELDIV__
 <div class="orn"><i></i><b></b><i></i></div>
 __ARABIC__
 <div class="text">__TEXT__</div>
-<div class="ref">__REF__</div>
+__REFDIV__
 </div></div></body></html>
 """
 
@@ -394,6 +394,7 @@ class CardRenderer:
         else:
             label = random.choice(LABELS)
         label_html = '<div class="label">%s</div>' % build_text(label, []) if label else ""
+        ref_html = ('<div class="ref">%s</div>' % htmllib.escape(spec["ref"])) if spec.get("ref") else ""
         arabic = (spec.get("arabic") or "").strip()
         ar_html = '<div class="ar">%s</div>' % htmllib.escape(arabic) if arabic else ""
         page_html = (
@@ -405,7 +406,7 @@ class CardRenderer:
             .replace("__LABELDIV__", label_html)
             .replace("__ARABIC__", ar_html)
             .replace("__TEXT__", build_text(spec["text"], spec.get("highlights")))
-            .replace("__REF__", htmllib.escape(spec["ref"]))
+            .replace("__REFDIV__", ref_html)
         )
         page = self._browser.new_page(viewport={"width": 1080, "height": 1080})
         page.set_content(page_html, wait_until="networkidle")
