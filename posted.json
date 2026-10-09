@@ -32,22 +32,22 @@
   "muslim:5950",
   "muslim:3393",
   "nawawi40:20",
-  "bukhari:2418"
+  "bukhari:2418",
+  "bukhari:6478",
+  "bukhari:4608",
+  "bukhari:5938"
  ],
  "styles": [
-  "stack",
-  "directleft",
-  "gradient",
   "tilt",
   "double",
   "cream",
   "bottom",
-  "arch"
+  "arch",
+  "offset",
+  "direct",
+  "chamfer"
  ],
  "bases": [
-  "18_Snowy-mountain-peaks-at-blue-hour-with-a-soft-grad.jpg",
-  "2_Lavender-and-violet-alcohol-ink-wash-with-thin-gol.jpg",
-  "14_Soft-cloudy-blue-sky-with-golden-sun-rays-and-sunl.jpg",
   "9_Deep-emerald-green-border-with-a-thin-gold-frame-l.jpg",
   "13_Calm-lake-at-sunset-reflecting-a-warm-orange-and-p.jpg",
   "8_A-blank-pastel-pink-sticky-note-pinned-with-a-red-.jpg",
@@ -64,11 +64,14 @@
   "1_Delicate-watercolor-blue-hydrangea-flowers-with-so.jpg",
   "6_Peaceful-golden-hour-seascape-with-calm-water-and-.jpg",
   "10_Deep-navy-night-sky-with-soft-stars-a-glowing-bras.jpg",
-  "7_Beige-grid-paper-background-with-fine-brown-leaf-l.jpg"
+  "7_Beige-grid-paper-background-with-fine-brown-leaf-l.jpg",
+  "21_Flat-layered-paper-cut-mountains-in-a-sunrise-grad.jpg",
+  "18_Snowy-mountain-peaks-at-blue-hour-with-a-soft-grad.jpg",
+  "2_Lavender-and-violet-alcohol-ink-wash-with-thin-gol.jpg"
  ],
  "sleep": {
-  "ds:8f297df3": 1791544213.6069698,
-  "ds:8e73676b": 1791544214.3584993,
+  "ds:8f297df3": 1791634808.967145,
+  "ds:8e73676b": 1791634808.2941296,
   "model:or/nvidia/nemotron-3-ultra-550b-a55b:free": 1791615358.146784,
   "model:or/nvidia/nemotron-3.5-lightning:free": 1791615805.6645138,
   "or:6587a417": 1794121405.7529724,
@@ -87,8 +90,8 @@
   "model:or/nvidia/nemotron-3.5-lightning:free": 0
  },
  "why": {
-  "ds:8f297df3": "no balance",
-  "ds:8e73676b": "no balance",
+  "ds:8f297df3": "402 {\"error\":{\"message\":\"Insufficient Balance (request_id: f9871d97-a54a-4199-a8",
+  "ds:8e73676b": "402 {\"error\":{\"message\":\"Insufficient Balance (request_id: ca631824-6218-42b3-9b",
   "model:or/nvidia/nemotron-3-ultra-550b-a55b:free": "3 bad answers in a row",
   "model:or/nvidia/nemotron-3.5-lightning:free": "3 bad answers in a row",
   "or:6587a417": "403 {\"error\":{\"message\":\"thinkingmachines/inkling:free is only available on agen",
