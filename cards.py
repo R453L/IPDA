@@ -30,15 +30,11 @@ STYLES = {
     "ogee": ("auto", [800, 860], 900),
     "direct": ("direct", [820, 880], 900),
     "directline": ("direct", [800, 860], 900),
-    "directleft": ("direct", [780], 700),
     "ribbon": ("auto", [780, 840], 880),
     "pill": ("auto", [760, 820], 880),
     "chamfer": ("auto", [780, 840], 900),
     "brackets": ("auto", [780, 840], 900),
     "barleft": ("auto", [780, 840], 900),
-    "bottom": ("auto", [1080], 640),
-    "top": ("auto", [1080], 640),
-    "side": ("auto", [680], 900),
     "tilt": ("auto", [740, 800], 860),
     "stack": ("auto", [740, 800], 860),
     "offset": ("auto", [740, 800], 860),
@@ -376,7 +372,7 @@ class CardRenderer:
     def __exit__(self, *a):
         self.close()
 
-    def render(self, spec, out="card.png", style=None, base_path=None):
+    def render(self, spec, out="card.png", style=None, base_path=None, force_width=None):
         """spec keys: text, arabic (optional), label, ref, highlights (list)."""
         style = style or random.choice(list(STYLES.keys()))
         mode, widths, maxh = STYLES[style]
@@ -387,7 +383,7 @@ class CardRenderer:
         avg, h, s = analyze(im)
         t = theme_for(mode, avg, h, s)
         tf = "scaleX(%d) scale(%s)" % (random.choice([1, -1]), random.choice([1.0, 1.04, 1.08]))
-        vars_css = "--w:%dpx;--tf:%s;" % (random.choice(widths), tf)
+        vars_css = "--w:%dpx;--tf:%s;" % (force_width or random.choice(widths), tf)
         vars_css += ";".join("--%s:%s" % (k.replace("_", "-"), v) for k, v in t.items())
         if "label" in spec:
             label = spec["label"]
