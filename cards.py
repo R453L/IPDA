@@ -44,6 +44,8 @@ STYLES = {
     "gradient": ("auto", [760, 820], 900),
     "medal": ("auto", [780, 840], 860),
     "double": ("auto", [720, 780], 840),
+    "capsule": ("auto", [800, 860], 860),
+    "dotted": ("auto", [760, 820], 880),
 }
 
 SOLID_DARK = [
@@ -181,6 +183,10 @@ body { margin: 0; }
 .st-medal::after { display: block; top: -48px; left: 50%; width: 96px; height: 96px;
   margin-left: -48px; border-radius: 50%; border: 5px solid var(--accent); z-index: 0;
   background: radial-gradient(circle, var(--accent) 0 10px, transparent 11px), var(--panelsolid); }
+.st-capsule { --r: 150px; --pt: 80px; padding-left: 110px; padding-right: 110px; }
+.st-dotted { --r: 26px; }
+.st-dotted::before { border: 4px dotted var(--accent); }
+.st-dotted::after { display: block; inset: 14px; z-index: -1; border-radius: 14px; background: var(--panel); }
 .st-double::before { inset: -32px; z-index: -2; border-radius: 64px; background: var(--panel2);
   border: 2px solid var(--accent); }
 .st-double::after { display: block; inset: 0; z-index: -1; border-radius: 40px;
@@ -335,6 +341,7 @@ def build_text(text, highlights):
             continue
         raw = raw.replace(w, "\x01" + w + "\x02", 1)
         marks.append(w)
+    raw = raw.replace(" \ufdfa", "\u00a0\ufdfa").replace("\ufdfa-", "\ufdfa-\u2060")
     s = htmllib.escape(raw)
     s = re.sub(r"(\S{1,13}-\S{1,13})", r'<span class="nb">\1</span>', s)
     s = s.replace("ﷺ", '<span class="sal">ﷺ</span>')
