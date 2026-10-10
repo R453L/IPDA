@@ -42,7 +42,6 @@ BOOKS = {
 STATE_FILE = "posted.json"
 MIN_FONT = 36
 HOOK_TRIES = 3
-SPEAKERS = ("রাসূলুল্লাহ ﷺ বলেছেন", "আল্লাহ তা‘আলা বলেছেন")
 MAX_ATTEMPTS = 12
 SLEEP_SECS = 24 * 3600
 SLEEP_LONG = 30 * 24 * 3600
@@ -83,27 +82,25 @@ SYS_ANALYZE = (
     "each) copied EXACTLY as they appear inside your Bengali translation."
 )
 SYS_HOOK = (
-    "You choose the headline for a social media card from a hadith. You receive "
-    "the English hadith and its Bengali translation. Reply with ONE JSON object "
-    "and nothing else, with exactly these keys:\n"
-    '"hook": ONE sentence copied EXACTLY, character for character, from the '
-    "Bengali translation. It must be a complete sentence of 6 to 28 words, and it "
-    "must be the most striking line that still makes sense on its own. Choose it "
-    "from the words of the Prophet or of Allah (hadith qudsi). If the hadith "
-    "only describes something the Prophet did, choose the sentence that "
-    "describes it.\n"
-    '"speaker": who says the hook sentence. Use exactly "রাসূলুল্লাহ ﷺ বলেছেন" '
-    'if the Prophet says it, exactly "আল্লাহ তা‘আলা বলেছেন" if Allah says it '
-    "(reported by the Prophet), and for a sentence that only describes an action, "
-    "copy exactly from the translation the short phrase naming the narrator, "
-    "for example 'আয়িশা (রাঃ) বলেন'."
+    "You write the headline (hook) for a social media card of a Bengali Islamic "
+    "page. You receive an English hadith and its Bengali translation. Write ONE "
+    "short Bengali hook, 5 to 14 words, that captures the core subject or benefit "
+    "of the hadith so that a reader wants to read the full hadith in the caption. "
+    "Rules: stay faithful, never add promises, rewards, punishments, rulings or "
+    "meanings that the hadith does not state; the hook is NOT a quotation, so use "
+    "no quotation marks and do not present it as the exact words of the Prophet; "
+    "name the concrete subject of the hadith, a hook that only says that the "
+    "Prophet said something is useless; it may be a question or a short "
+    "statement; no emojis, no hashtags, no dash symbols; if you mention the Prophet "
+    "write 'রাসূলুল্লাহ ﷺ' or 'নবীজি ﷺ'. Reply with ONE JSON object and nothing "
+    'else: {"hook": "..."}.'
 )
 SYS_HOOKCHECK = (
-    "You receive an English hadith, a Bengali sentence taken from its translation "
-    "and a Bengali phrase naming the speaker of that sentence. Reply with exactly "
-    "one line: 'OK' if the sentence is really part of what the hadith says and the "
-    "phrase names the person who actually says it in the hadith (Allah, the "
-    "Prophet, or a Companion); otherwise 'BAD: <short reason in English>'."
+    "You receive an English hadith and a Bengali hook line written for a social "
+    "media card. Reply with exactly one line: 'OK' if the hook faithfully reflects "
+    "the main message of the hadith, adds no promise, reward, punishment, ruling "
+    "or meaning that the hadith does not state, and does not present itself as an "
+    "exact quote; otherwise 'BAD: <short reason in English>'."
 )
 SYS_VERIFY = (
     "You are a strict reviewer of Bengali translations of hadith. Compare the "
@@ -628,13 +625,16 @@ def normalize_bn(t):
     return clean(t.replace("\ufdfa \ufdfa", "\ufdfa"))
 
 
+HOOK_STOP = {"রাসূলুল্লাহ", "ﷺ", "নবী", "নবীজি", "বলেছেন", "বলেন", "বললেন", "হাদিস", "হাদীস",
+             "আল্লাহর", "রাসূল", "মুহাম্মাদ", "মুহাম্মদ"}
+
+
 def get_hook(c, a):
-    """A real hook for a long hadith: a dedicated request, up to HOOK_TRIES different models.
-    Returns (hook, speaker) or None. Never returns a fragment of the story."""
-    bengali = a["bengali"]
+    """AI-written hook for a hadith that does not fit on the card (no reference goes with it).
+    Up to HOOK_TRIES attempts on different models, each checked by an independent model."""
     tried = {a["model"]}
     for attempt in range(1, HOOK_TRIES + 1):
-        user = "English hadith:\n" + c["unit"] + "\n\nBengali translation:\n" + bengali
+        user = "English hadith:\n" + c["unit"] + "\n\nBengali translation:\n" + a["bengali"]
         try:
             text, label, model = chat("verify" if attempt % 2 == 0 else "translate",
                                       SYS_HOOK, user, avoid=tried if attempt > 1 else None,
@@ -644,21 +644,14 @@ def get_hook(c, a):
             print("  hook: no usable answer on attempt", attempt)
             continue
         tried.add(model)
-        data = parse_json(text) or {}
-        hook = normalize_bn(str(data.get("hook", "")))
-        speaker = normalize_bn(str(data.get("speaker", "")))
-        words = len(hook.split())
-        if not (hook and 6 <= words <= 28 and hook in bengali):
-            print("  hook attempt %d rejected: not an exact sentence of the translation" % attempt)
+        hook = normalize_bn(str((parse_json(text) or {}).get("hook", "")))
+        hook = clean(re.sub("[\"\u201c\u201d\u2018\u2019]", "", hook))
+        words = hook.split()
+        content = [w for w in words if w.strip("?!।,.") not in HOOK_STOP]
+        if not (4 <= len(words) <= 16 and len(content) >= 3 and has_bengali(hook)):
+            print("  hook attempt %d rejected (length or no real subject): %s" % (attempt, hook[:60]))
             continue
-        ok_speaker = speaker in SPEAKERS or (
-            speaker and len(speaker.split()) <= 8 and speaker in bengali
-            and bengali.index(speaker) < bengali.index(hook))
-        if not ok_speaker:
-            print("  hook attempt %d rejected: speaker line not acceptable" % attempt)
-            continue
-        user = ("English hadith:\n" + c["unit"] + "\n\nBengali sentence:\n" + hook
-                + "\n\nBengali speaker phrase:\n" + speaker)
+        user = "English hadith:\n" + c["unit"] + "\n\nBengali hook:\n" + hook
         try:
             verdict, _, _ = chat("verify", SYS_HOOKCHECK, user, avoid={model},
                                  validator=lambda t: clean(t).upper().startswith(("OK", "BAD")),
@@ -668,7 +661,7 @@ def get_hook(c, a):
             continue
         print("  hook check:", clean(verdict)[:140])
         if clean(verdict).upper().startswith("OK"):
-            return hook, speaker
+            return hook
     return None
 
 
@@ -785,8 +778,8 @@ def make_one(renderer):
             if not hook:
                 print(uid, "| long hadith and no valid hook, taking another hadith")
                 continue
-            style, base = choose_look(True)
-            spec = {"text": hook[0], "arabic": "", "ref": "", "highlights": [], "label": hook[1]}
+            style, base = choose_look(False)
+            spec = {"text": hook, "arabic": "", "ref": "", "highlights": [], "label": ""}
             try:
                 info = renderer.render(spec, "card.png", style=style, base_path=base)
             except Exception as e:
