@@ -40,7 +40,9 @@ BOOKS = {
     "muslim": {"path": "the_9_books/muslim.json", "name": "সহীহ মুসলিম", "weight": 3},
 }
 STATE_FILE = "posted.json"
-CARD_MAX_CHARS = 320
+MIN_FONT = 36
+HOOK_TRIES = 3
+SPEAKERS = ("রাসূলুল্লাহ ﷺ বলেছেন", "আল্লাহ তা‘আলা বলেছেন")
 MAX_ATTEMPTS = 12
 SLEEP_SECS = 24 * 3600
 SLEEP_LONG = 30 * 24 * 3600
@@ -78,14 +80,23 @@ SYS_ANALYZE = (
     "otherwise add no honorific. Do not use dash symbols; use commas or full stops "
     "instead.\n"
     '"highlights": a list of 1 to 3 key words or short phrases (at most 3 words '
-    "each) copied EXACTLY as they appear inside your Bengali translation.\n"
-    '"hook": one complete sentence copied EXACTLY from your Bengali translation, '
-    "at most 28 words, that is the most striking line of the hadith and makes "
-    "sense on its own, or an empty string if there is no such sentence.\n"
-    '"hook_speaker": a short phrase (at most 8 words) copied EXACTLY from your '
-    "Bengali translation, appearing BEFORE the hook sentence, that names who says "
-    "the hook sentence, for example 'আল্লাহ তা‘আলা বলেছেন' or 'রাসূলুল্লাহ ﷺ "
-    "বলেছেন'. Empty string if the translation has no such phrase."
+    "each) copied EXACTLY as they appear inside your Bengali translation."
+)
+SYS_HOOK = (
+    "You choose the headline for a social media card from a hadith. You receive "
+    "the English hadith and its Bengali translation. Reply with ONE JSON object "
+    "and nothing else, with exactly these keys:\n"
+    '"hook": ONE sentence copied EXACTLY, character for character, from the '
+    "Bengali translation. It must be a complete sentence of 6 to 28 words, and it "
+    "must be the most striking line that still makes sense on its own. Choose it "
+    "from the words of the Prophet or of Allah (hadith qudsi). If the hadith "
+    "only describes something the Prophet did, choose the sentence that "
+    "describes it.\n"
+    '"speaker": who says the hook sentence. Use exactly "রাসূলুল্লাহ ﷺ বলেছেন" '
+    'if the Prophet says it, exactly "আল্লাহ তা‘আলা বলেছেন" if Allah says it '
+    "(reported by the Prophet), and for a sentence that only describes an action, "
+    "copy exactly from the translation the short phrase naming the narrator, "
+    "for example 'আয়িশা (রাঃ) বলেন'."
 )
 SYS_HOOKCHECK = (
     "You receive an English hadith, a Bengali sentence taken from its translation "
@@ -290,9 +301,15 @@ def call_once(provider, key, model, system, user):
     return classify(r.status_code, body), "%d %s" % (r.status_code, body[:120])
 
 
+def _avoid_set(avoid):
+    if not avoid:
+        return set()
+    return set(avoid) if isinstance(avoid, (set, list, tuple)) else {avoid}
+
+
 def or_endpoints(avoid):
     for m in OR_MODELS:
-        if m == avoid:
+        if m in _avoid_set(avoid):
             continue
         keys = list(OR_KEYS)
         if keys:
@@ -303,7 +320,7 @@ def or_endpoints(avoid):
 
 
 def ds_endpoints(avoid):
-    if DS_MODEL == avoid:
+    if DS_MODEL in _avoid_set(avoid):
         return
     keys = list(DS_KEYS)
     if keys:
@@ -314,7 +331,7 @@ def ds_endpoints(avoid):
 
 
 def pl_endpoints(avoid):
-    if POLL_KEY and avoid != "openai":
+    if POLL_KEY and "openai" not in _avoid_set(avoid):
         yield "pl", POLL_KEY, "openai"
 
 
@@ -328,17 +345,21 @@ def endpoints(role, avoid):
             yield ep
 
 
-def chat(role, system, user, validator=None, avoid=None):
+def chat(role, system, user, validator=None, avoid=None, max_tries=None, track=True):
     """Try providers in order. Returns (text, label, model)."""
     used = {"or": 0, "ds": 0, "pl": 0}
+    total = 0
     for provider, key, model in endpoints(role, avoid):
         if used[provider] >= TRIES[provider]:
             continue
+        if max_tries and total >= max_tries:
+            break
         kident = kid(provider, key)
         mident = "model:" + provider + "/" + model
         if asleep(kident) or asleep(mident) or cooling(kident + "|" + model):
             continue
         used[provider] += 1
+        total += 1
         try:
             status, text = call_once(provider, key, model, system, user)
         except Exception as e:
@@ -346,7 +367,8 @@ def chat(role, system, user, validator=None, avoid=None):
         if status == "ok":
             if validator and not validator(text):
                 print("  invalid answer from", provider + "/" + model)
-                bump_fail(mident)
+                if track:
+                    bump_fail(mident)
                 continue
             good_answer(mident)
             return text, provider + ":" + model, model
@@ -538,19 +560,10 @@ def analyze(c):
     bengali = normalize_bn(bengali.replace("\u2014", ", ").replace("\u2013", ", ").replace(" - ", ", "))
     highlights = [normalize_bn(str(x)) for x in (data.get("highlights") or []) if isinstance(x, str)]
     highlights = [x for x in highlights if x and x in bengali][:3]
-    hook = normalize_bn(str(data.get("hook", "")))
-    if hook and (hook not in bengali or len(hook.split()) > 28):
-        hook = ""
-    speaker = normalize_bn(str(data.get("hook_speaker", "")))
-    if not (hook and speaker and len(speaker.split()) <= 8 and speaker in bengali
-            and bengali.index(speaker) < bengali.index(hook)):
-        speaker = ""
     return {
         "prophet_report": truthy(data.get("prophet_report")),
         "bengali": bengali,
         "highlights": highlights,
-        "hook": hook,
-        "hook_speaker": speaker,
         "translator": label,
         "model": model,
     }
@@ -600,39 +613,63 @@ BLESS_RE = [
     re.compile(r"\(?\s*সাল্লাল্লাহু\s+আলাইহি\s+ওয়া\s*সাল্লাম\s*\)?"),
     re.compile(r"\(\s*\ufdfa\s*\)"),
 ]
+RADI_RE = re.compile(
+    r"\(\s*আল্লাহ\s+(?:তাঁকে|তাকে|তাঁদের|তাদের|তাঁদের উভয়ের|তাদের উভয়ের|তাঁর প্রতি|তার প্রতি)\s+"
+    r"(?:সন্তুষ্ট|রাজি|খুশি)[^()]{0,25}\)")
 BLESS_AFTER_NAME = re.compile(
     r"(রাসূলুল্লাহ|রাসূল|নবীজি|নবী|মুহাম্মাদ|মুহাম্মদ)\s*\(\s*[^()]*?(?:শান্তি|রহমত|দরূদ|সালাম)[^()]*?\)")
 
 
 def normalize_bn(t):
+    t = RADI_RE.sub("(রাঃ)", t)
     t = BLESS_AFTER_NAME.sub(lambda m: m.group(1) + " \ufdfa", t)
     for rx in BLESS_RE:
         t = rx.sub("\ufdfa", t)
     return clean(t.replace("\ufdfa \ufdfa", "\ufdfa"))
 
 
-def check_hook(c, a):
-    """Is the hook really said by the named speaker? Uses an independent model."""
-    user = ("English hadith:\n" + c["unit"] + "\n\nBengali sentence:\n" + a["hook"]
-            + "\n\nBengali speaker phrase:\n" + a["hook_speaker"])
-    try:
-        text, _, _ = chat("verify", SYS_HOOKCHECK, user,
-                          validator=lambda t: clean(t).upper().startswith(("OK", "BAD")),
-                          avoid=a["model"])
-    except RuntimeError:
-        return False
-    print("  hook check:", clean(text)[:150])
-    return clean(text).upper().startswith("OK")
-
-
-def fallback_hook(bengali):
-    """First sentence of the translation (it names who narrates and who says it)."""
-    sents = [x for x in re.split(r"(?<=[।?!])\s+", bengali) if x]
-    first = sents[0] if sents else bengali
-    if len(first) > 420:
-        cut = max(first.rfind(",", 0, 300), first.rfind("\u2019", 0, 300))
-        first = first[:cut if cut > 120 else 300].rstrip(" ,") + "…"
-    return first
+def get_hook(c, a):
+    """A real hook for a long hadith: a dedicated request, up to HOOK_TRIES different models.
+    Returns (hook, speaker) or None. Never returns a fragment of the story."""
+    bengali = a["bengali"]
+    tried = {a["model"]}
+    for attempt in range(1, HOOK_TRIES + 1):
+        user = "English hadith:\n" + c["unit"] + "\n\nBengali translation:\n" + bengali
+        try:
+            text, label, model = chat("verify" if attempt % 2 == 0 else "translate",
+                                      SYS_HOOK, user, avoid=tried if attempt > 1 else None,
+                                      validator=lambda t: isinstance(parse_json(t), dict),
+                                      max_tries=3, track=False)
+        except RuntimeError:
+            print("  hook: no usable answer on attempt", attempt)
+            continue
+        tried.add(model)
+        data = parse_json(text) or {}
+        hook = normalize_bn(str(data.get("hook", "")))
+        speaker = normalize_bn(str(data.get("speaker", "")))
+        words = len(hook.split())
+        if not (hook and 6 <= words <= 28 and hook in bengali):
+            print("  hook attempt %d rejected: not an exact sentence of the translation" % attempt)
+            continue
+        ok_speaker = speaker in SPEAKERS or (
+            speaker and len(speaker.split()) <= 8 and speaker in bengali
+            and bengali.index(speaker) < bengali.index(hook))
+        if not ok_speaker:
+            print("  hook attempt %d rejected: speaker line not acceptable" % attempt)
+            continue
+        user = ("English hadith:\n" + c["unit"] + "\n\nBengali sentence:\n" + hook
+                + "\n\nBengali speaker phrase:\n" + speaker)
+        try:
+            verdict, _, _ = chat("verify", SYS_HOOKCHECK, user, avoid={model},
+                                 validator=lambda t: clean(t).upper().startswith(("OK", "BAD")),
+                                 max_tries=3, track=False)
+        except RuntimeError:
+            print("  hook: no independent model to check attempt", attempt)
+            continue
+        print("  hook check:", clean(verdict)[:140])
+        if clean(verdict).upper().startswith("OK"):
+            return hook, speaker
+    return None
 
 
 # ------------------------------------------------------------------ telegram
@@ -721,26 +758,43 @@ def make_one(renderer):
         caption = a["bengali"] + "\n\n📚 " + ref
         if CAPTION_FOOTER:
             caption += "\n\n" + CAPTION_FOOTER
-        if len(a["bengali"]) <= CARD_MAX_CHARS:
-            # whole hadith fits: full text and the reference on the card
-            spec = {"text": a["bengali"], "arabic": c["arabic_quote"], "ref": ref,
+
+        # 1) does the whole hadith fit on the card at a readable size?
+        style, base = choose_look(False)
+        try:
+            full = {"text": a["bengali"], "arabic": c["arabic_quote"], "ref": ref,
                     "highlights": a["highlights"], "label": ""}
+            info = renderer.render(full, "card.png", style=style, base_path=base)
+            if info["font"] < MIN_FONT and full["arabic"]:
+                full["arabic"] = ""
+                info = renderer.render(full, "card.png", style=style, base_path=base)
+            if info["font"] < MIN_FONT:
+                info = renderer.render(full, "card.png", style="glass", base_path=base,
+                                       force_width=880)
+                style = "glass"
+            fits = info["font"] >= MIN_FONT
+        except Exception as e:
+            print("Card render failed:", type(e).__name__, str(e)[:150])
+            continue
+
+        if fits:
             kind = "full"
         else:
-            # long hadith: only a hook on the card, no reference; everything goes in the caption
-            if a["hook"] and a["hook_speaker"] and check_hook(c, a):
-                spec = {"text": a["hook"], "arabic": "", "ref": "", "highlights": [],
-                        "label": a["hook_speaker"]}
-                kind = "hook"
-            else:
-                spec = {"text": fallback_hook(a["bengali"]), "arabic": "", "ref": "",
-                        "highlights": [], "label": ""}
-                kind = "start"
-
-        style, base = choose_look(bool(spec["label"]))
+            # 2) too long: only a real hook on the card, no reference
+            hook = get_hook(c, a)
+            if not hook:
+                print(uid, "| long hadith and no valid hook, taking another hadith")
+                continue
+            style, base = choose_look(True)
+            spec = {"text": hook[0], "arabic": "", "ref": "", "highlights": [], "label": hook[1]}
+            try:
+                info = renderer.render(spec, "card.png", style=style, base_path=base)
+            except Exception as e:
+                print("Card render failed:", type(e).__name__, str(e)[:150])
+                continue
+            kind = "hook"
+        print("Card:", kind, info)
         try:
-            info = renderer.render(spec, "card.png", style=style, base_path=base)
-            print("Card:", kind, info)
             post_to_telegram("card.png", caption)
             if REVIEW_MODE:
                 tg_admin(
