@@ -41,22 +41,22 @@
   "bukhari:5140",
   "muslim:3865",
   "nawawi40:3",
-  "muslim:3467"
+  "muslim:3467",
+  "muslim:3344",
+  "bukhari:4398",
+  "muslim:1362"
  ],
  "styles": [
-  "direct",
-  "chamfer",
-  "quote",
   "ogee",
   "top",
   "glass",
   "gradient",
-  "tilt"
+  "tilt",
+  "offset",
+  "double",
+  "brackets"
  ],
  "bases": [
-  "16_Cherry-blossom-branches-in-full-bloom-framing-the-.jpg",
-  "15_Warm-autumn-leaves-in-orange-red-and-gold-framing-.jpg",
-  "20_Tropical-monstera-and-palm-leaves-in-rich-green-fr.jpg",
   "4_Islamic-geometric-star-pattern-frame-in-teal-blue-.jpg",
   "5_Bright-cream-wall-with-an-elegant-thin-gold-arch-o.jpg",
   "11_Serene-desert-dunes-at-sunrise-with-a-soft-peach-a.jpg",
@@ -73,18 +73,19 @@
   "13_Calm-lake-at-sunset-reflecting-a-warm-orange-and-p.jpg",
   "8_A-blank-pastel-pink-sticky-note-pinned-with-a-red-.jpg",
   "3_Blooming-peach-blossom-branches-reaching-in-from-t.jpg",
-  "12_Misty-green-hills-at-dawn-with-a-soft-pastel-pink-.jpg"
+  "12_Misty-green-hills-at-dawn-with-a-soft-pastel-pink-.jpg",
+  "19_Sunlit-forest-with-gentle-light-rays-green-moss-an.jpg",
+  "16_Cherry-blossom-branches-in-full-bloom-framing-the-.jpg",
+  "15_Warm-autumn-leaves-in-orange-red-and-gold-framing-.jpg"
  ],
  "sleep": {
-  "ds:8f297df3": 1791634808.967145,
-  "ds:8e73676b": 1791634808.2941296,
-  "model:or/nvidia/nemotron-3-ultra-550b-a55b:free": 1791615358.146784,
-  "model:or/nvidia/nemotron-3.5-lightning:free": 1791615805.6645138,
+  "ds:8f297df3": 1791739246.9863448,
   "or:6587a417": 1794121405.7529724,
   "or:4269086a": 1794121693.2058628,
   "or:aef1dc87": 1794121731.7778518,
   "or:bac272b5": 1794121731.8243802,
-  "or:ca4f9763": 1794121731.8775122
+  "or:ca4f9763": 1794121731.8775122,
+  "ds:8e73676b": 1791739288.5262067
  },
  "modelfail": {
   "model:ds/deepseek-chat": 0,
@@ -96,15 +97,13 @@
   "model:or/nvidia/nemotron-3.5-lightning:free": 0
  },
  "why": {
-  "ds:8f297df3": "402 {\"error\":{\"message\":\"Insufficient Balance (request_id: f9871d97-a54a-4199-a8",
-  "ds:8e73676b": "402 {\"error\":{\"message\":\"Insufficient Balance (request_id: ca631824-6218-42b3-9b",
-  "model:or/nvidia/nemotron-3-ultra-550b-a55b:free": "3 bad answers in a row",
-  "model:or/nvidia/nemotron-3.5-lightning:free": "3 bad answers in a row",
+  "ds:8f297df3": "402 {\"error\":{\"message\":\"Insufficient Balance (request_id: 7cbad01a-d9c2-4653-af",
   "or:6587a417": "403 {\"error\":{\"message\":\"thinkingmachines/inkling:free is only available on agen",
   "or:4269086a": "403 {\"error\":{\"message\":\"thinkingmachines/inkling:free is only available on agen",
   "or:aef1dc87": "403 {\"error\":{\"message\":\"thinkingmachines/inkling:free is only available on agen",
   "or:bac272b5": "403 {\"error\":{\"message\":\"thinkingmachines/inkling:free is only available on agen",
-  "or:ca4f9763": "403 {\"error\":{\"message\":\"thinkingmachines/inkling:free is only available on agen"
+  "or:ca4f9763": "403 {\"error\":{\"message\":\"thinkingmachines/inkling:free is only available on agen",
+  "ds:8e73676b": "402 {\"error\":{\"message\":\"Insufficient Balance (request_id: 3d5c3f67-a78f-4dae-8a"
  },
  "dead401": {
   "or:fc356ef1": [
