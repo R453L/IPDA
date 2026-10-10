@@ -38,22 +38,22 @@
   "bukhari:5938",
   "nawawi40:22",
   "bukhari:6878",
-  "bukhari:5140"
+  "bukhari:5140",
+  "muslim:3865",
+  "nawawi40:3",
+  "muslim:3467"
  ],
  "styles": [
-  "bottom",
-  "arch",
-  "offset",
   "direct",
   "chamfer",
   "quote",
   "ogee",
-  "top"
+  "top",
+  "glass",
+  "gradient",
+  "tilt"
  ],
  "bases": [
-  "3_Blooming-peach-blossom-branches-reaching-in-from-t.jpg",
-  "12_Misty-green-hills-at-dawn-with-a-soft-pastel-pink-.jpg",
-  "19_Sunlit-forest-with-gentle-light-rays-green-moss-an.jpg",
   "16_Cherry-blossom-branches-in-full-bloom-framing-the-.jpg",
   "15_Warm-autumn-leaves-in-orange-red-and-gold-framing-.jpg",
   "20_Tropical-monstera-and-palm-leaves-in-rich-green-fr.jpg",
@@ -70,7 +70,10 @@
   "2_Lavender-and-violet-alcohol-ink-wash-with-thin-gol.jpg",
   "14_Soft-cloudy-blue-sky-with-golden-sun-rays-and-sunl.jpg",
   "9_Deep-emerald-green-border-with-a-thin-gold-frame-l.jpg",
-  "13_Calm-lake-at-sunset-reflecting-a-warm-orange-and-p.jpg"
+  "13_Calm-lake-at-sunset-reflecting-a-warm-orange-and-p.jpg",
+  "8_A-blank-pastel-pink-sticky-note-pinned-with-a-red-.jpg",
+  "3_Blooming-peach-blossom-branches-reaching-in-from-t.jpg",
+  "12_Misty-green-hills-at-dawn-with-a-soft-pastel-pink-.jpg"
  ],
  "sleep": {
   "ds:8f297df3": 1791634808.967145,
