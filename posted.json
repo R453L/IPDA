@@ -47,20 +47,20 @@
   "muslim:1362",
   "nawawi40:21",
   "muslim:5095",
-  "bukhari:3273"
+  "bukhari:3273",
+  "muslim:1420"
  ],
  "styles": [
-  "gradient",
   "tilt",
   "offset",
   "double",
   "brackets",
   "medal",
   "solid",
-  "frame"
+  "frame",
+  "ogee"
  ],
  "bases": [
-  "22_Pastel-mesh-gradient-from-blush-pink-to-lavender-w.jpg",
   "1_Delicate-watercolor-blue-hydrangea-flowers-with-so.jpg",
   "6_Peaceful-golden-hour-seascape-with-calm-water-and-.jpg",
   "10_Deep-navy-night-sky-with-soft-stars-a-glowing-bras.jpg",
@@ -79,7 +79,8 @@
   "15_Warm-autumn-leaves-in-orange-red-and-gold-framing-.jpg",
   "20_Tropical-monstera-and-palm-leaves-in-rich-green-fr.jpg",
   "4_Islamic-geometric-star-pattern-frame-in-teal-blue-.jpg",
-  "5_Bright-cream-wall-with-an-elegant-thin-gold-arch-o.jpg"
+  "5_Bright-cream-wall-with-an-elegant-thin-gold-arch-o.jpg",
+  "11_Serene-desert-dunes-at-sunrise-with-a-soft-peach-a.jpg"
  ],
  "sleep": {
   "ds:8f297df3": 1791739246.9863448,
