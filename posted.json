@@ -44,22 +44,22 @@
   "muslim:3467",
   "muslim:3344",
   "bukhari:4398",
-  "muslim:1362"
+  "muslim:1362",
+  "nawawi40:21",
+  "muslim:5095",
+  "bukhari:3273"
  ],
  "styles": [
-  "ogee",
-  "top",
-  "glass",
   "gradient",
   "tilt",
   "offset",
   "double",
-  "brackets"
+  "brackets",
+  "medal",
+  "solid",
+  "frame"
  ],
  "bases": [
-  "4_Islamic-geometric-star-pattern-frame-in-teal-blue-.jpg",
-  "5_Bright-cream-wall-with-an-elegant-thin-gold-arch-o.jpg",
-  "11_Serene-desert-dunes-at-sunrise-with-a-soft-peach-a.jpg",
   "22_Pastel-mesh-gradient-from-blush-pink-to-lavender-w.jpg",
   "1_Delicate-watercolor-blue-hydrangea-flowers-with-so.jpg",
   "6_Peaceful-golden-hour-seascape-with-calm-water-and-.jpg",
@@ -76,7 +76,10 @@
   "12_Misty-green-hills-at-dawn-with-a-soft-pastel-pink-.jpg",
   "19_Sunlit-forest-with-gentle-light-rays-green-moss-an.jpg",
   "16_Cherry-blossom-branches-in-full-bloom-framing-the-.jpg",
-  "15_Warm-autumn-leaves-in-orange-red-and-gold-framing-.jpg"
+  "15_Warm-autumn-leaves-in-orange-red-and-gold-framing-.jpg",
+  "20_Tropical-monstera-and-palm-leaves-in-rich-green-fr.jpg",
+  "4_Islamic-geometric-star-pattern-frame-in-teal-blue-.jpg",
+  "5_Bright-cream-wall-with-an-elegant-thin-gold-arch-o.jpg"
  ],
  "sleep": {
   "ds:8f297df3": 1791739246.9863448,
