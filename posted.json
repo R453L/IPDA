@@ -51,20 +51,20 @@
   "muslim:1420",
   "nawawi40:30",
   "muslim:1225",
-  "muslim:7157"
+  "muslim:7157",
+  "nawawi40:9"
  ],
  "styles": [
-  "brackets",
   "medal",
   "solid",
   "frame",
   "ogee",
   "glass",
   "quote",
-  "dotted"
+  "dotted",
+  "offset"
  ],
  "bases": [
-  "7_Beige-grid-paper-background-with-fine-brown-leaf-l.jpg",
   "21_Flat-layered-paper-cut-mountains-in-a-sunrise-grad.jpg",
   "18_Snowy-mountain-peaks-at-blue-hour-with-a-soft-grad.jpg",
   "2_Lavender-and-violet-alcohol-ink-wash-with-thin-gol.jpg",
@@ -83,7 +83,8 @@
   "11_Serene-desert-dunes-at-sunrise-with-a-soft-peach-a.jpg",
   "671861068_1791691861539847.jpeg",
   "516084416_1791691556514240.jpeg",
-  "965761211_1791691792222004.jpeg"
+  "965761211_1791691792222004.jpeg",
+  "649657575_1791691446706450.jpeg"
  ],
  "sleep": {
   "ds:8f297df3": 1791739246.9863448,
